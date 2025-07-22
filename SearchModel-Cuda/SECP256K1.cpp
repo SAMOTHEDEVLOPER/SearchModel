@@ -40,7 +40,7 @@ void Secp256K1::Init()
 	G.x.SetBase16("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798");
 	G.y.SetBase16("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8");
 	G.z.SetInt32(1);
-	order.SetBase16("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD036421");
+	order.SetBase16("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
 
 	Int::InitK1(&order);
 
@@ -148,7 +148,7 @@ void Secp256K1::Check()
 
 	// 18aPiLmTow7Xgu96msrDYvSSWweCvB9oBA
 	pub.x.SetBase16(/*03*/"3bf3d80f868fa33c6353012cb427e98b080452f19b5c1149ea2acfe4b7599739");
-	pub.y = GetY(pub.x, true);
+	pub.y = GetY(pub.x, false);
 	printf("Check Calc PubKey (odd) %s:", GetAddress(true, pub).c_str());
 	PrintResult(EC(pub));
 
@@ -169,8 +169,6 @@ Point Secp256K1::ComputePublicKey(Int* privKey)
 		if (b)
 			break;
 	}
-    if (i == 32) return Q; // Key is zero
-
 	Q = GTable[256 * i + (b - 1)];
 	i++;
 
@@ -274,7 +272,7 @@ Int Secp256K1::DecodePrivateKey(char* key, bool* compressed)
 (buff)[5] = ((p).x.bits[2] >> 8) | ((p).x.bits[3] <<24); \
 (buff)[6] = ((p).x.bits[1] >> 8) | ((p).x.bits[2] <<24); \
 (buff)[7] = ((p).x.bits[0] >> 8) | ((p).x.bits[1] <<24); \
-(buff)[8] = 0x00800000 | ((uint32_t)(((unsigned char*)&p.x.bits[0])[0]) << 24); \
+(buff)[8] = 0x00800000 | ((uint32_t)(((unsigned char*)&p.x.bits[0])[3]) << 24); \
 (buff)[9] = 0; \
 (buff)[10] = 0; \
 (buff)[11] = 0; \
@@ -292,7 +290,7 @@ Int Secp256K1::DecodePrivateKey(char* key, bool* compressed)
 (buff)[5] = ((p).x.bits[2] >> 8) | ((p).x.bits[3] <<24); \
 (buff)[6] = ((p).x.bits[1] >> 8) | ((p).x.bits[2] <<24); \
 (buff)[7] = ((p).x.bits[0] >> 8) | ((p).x.bits[1] <<24); \
-(buff)[8] = ((p).y.bits[7] >> 8) | ((uint32_t)(((unsigned char*)&p.x.bits[0])[0]) << 24); \
+(buff)[8] = ((p).y.bits[7] >> 8) | ((uint32_t)(((unsigned char*)&p.x.bits[0])[3]) << 24); \
 (buff)[9] = ((p).y.bits[6] >> 8) | ((p).y.bits[7] <<24); \
 (buff)[10] = ((p).y.bits[5] >> 8) | ((p).y.bits[6] <<24); \
 (buff)[11] = ((p).y.bits[4] >> 8) | ((p).y.bits[5] <<24); \
@@ -300,7 +298,7 @@ Int Secp256K1::DecodePrivateKey(char* key, bool* compressed)
 (buff)[13] = ((p).y.bits[2] >> 8) | ((p).y.bits[3] <<24); \
 (buff)[14] = ((p).y.bits[1] >> 8) | ((p).y.bits[2] <<24); \
 (buff)[15] = ((p).y.bits[0] >> 8) | ((p).y.bits[1] <<24); \
-(buff)[16] = 0x00800000 | ((uint32_t)(((unsigned char*)&p.y.bits[0])[0]) << 24); \
+(buff)[16] = 0x00800000 | ((uint32_t)(((unsigned char*)&p.y.bits[0])[3]) << 24); \
 (buff)[17] = 0; \
 (buff)[18] = 0; \
 (buff)[19] = 0; \
@@ -428,7 +426,7 @@ Point Secp256K1::ParsePublicKeyHex(std::string str, bool& isCompressed)
 		}
 		for (int i = 0; i < 32; i++)
 			ret.x.SetByte(31 - i, GetByte(str, i + 1));
-		ret.y = GetY(ret.x, false); // 0x02 is for even Y
+		ret.y = GetY(ret.x, true);
 		isCompressed = true;
 		break;
 
@@ -439,7 +437,7 @@ Point Secp256K1::ParsePublicKeyHex(std::string str, bool& isCompressed)
 		}
 		for (int i = 0; i < 32; i++)
 			ret.x.SetByte(31 - i, GetByte(str, i + 1));
-		ret.y = GetY(ret.x, true); // 0x03 is for odd Y
+		ret.y = GetY(ret.x, false);
 		isCompressed = true;
 		break;
 
@@ -545,40 +543,41 @@ void Secp256K1::GetPubKeyBytes(bool compressed, Point& pubKey, unsigned char* pu
 	}
 }
 
-void Secp256K1::GetXBytes(bool compressed, Point& pubKey, unsigned char* xpointBytes)
+void Secp256K1::GetXBytes(bool compressed, Point& pubKey, unsigned char* publicKeyBytes)
 {
-    // The X-coordinate is the same regardless of compression.
-    pubKey.x.Get32Bytes(xpointBytes);
-}
-
-void Secp256K1::GetHash160(bool compressed, Point& pubKey, unsigned char* hash)
-{
-
-	unsigned char shapk[64];
-
-	unsigned char publicKeyBytes[128];
-
 	if (!compressed) {
-
 		// Full public key
-		publicKeyBytes[0] = 0x4;
-		pubKey.x.Get32Bytes(publicKeyBytes + 1);
-		pubKey.y.Get32Bytes(publicKeyBytes + 33);
-		sha256_65(publicKeyBytes, shapk);
-
+		pubKey.x.Get32Bytes(publicKeyBytes);
+		pubKey.y.Get32Bytes(publicKeyBytes + 32);
 	}
 	else {
-
 		// Compressed public key
-		publicKeyBytes[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
-		pubKey.x.Get32Bytes(publicKeyBytes + 1);
-		sha256_33(publicKeyBytes, shapk);
-
+		pubKey.x.Get32Bytes(publicKeyBytes);
 	}
-
-	ripemd160_32(shapk, hash);
-
 }
+
+//-FIX- START: This function is rewritten to be consistent with the SSE/GPU path
+void Secp256K1::GetHash160(bool compressed, Point& pubKey, unsigned char* hash)
+{
+    unsigned char shapk[64];
+
+    if (!compressed) {
+        // Use the same serialization as the SSE path for uncompressed keys
+        uint32_t b[32];
+        KEYBUFFUNCOMP(b, pubKey);
+        // Cast the buffer to unsigned char* and use the existing sha256_65 function
+        sha256_65((unsigned char*)b, shapk);
+    } else {
+        // Use the same serialization as the SSE path for compressed keys
+        uint32_t b[16];
+        KEYBUFFCOMP(b, pubKey);
+        // Cast the buffer to unsigned char* and use the existing sha256_33 function
+        sha256_33((unsigned char*)b, shapk);
+    }
+
+    ripemd160_32(shapk, hash);
+}
+//-FIX- END
 
 void Secp256K1::GetHashETH(Point& pubKey, unsigned char* hash)
 {
@@ -608,7 +607,6 @@ std::string Secp256K1::GetPrivAddress(bool compressed, Int& privKey)
 		return EncodeBase58(address, address + 37);
 
 	}
-
 }
 
 #define CHECKSUM(buff,A) \
@@ -759,15 +757,6 @@ Point Secp256K1::AddDirect(Point& p1, Point& p2)
 
 	dy.ModSub(&p2.y, &p1.y);
 	dx.ModSub(&p2.x, &p1.x);
-    // FIX: Corrected case from isZero to IsZero
-    if(dx.IsZero()) {
-        if(dy.IsZero()) {
-            return DoubleDirect(p1);
-        } else {
-            r.Clear();
-            return r; // Point at infinity
-        }
-    }
 	dx.ModInv();
 	_s.ModMulK1(&dy, &dx);    // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
 
@@ -776,9 +765,9 @@ Point Secp256K1::AddDirect(Point& p1, Point& p2)
 	r.x.ModSub(&_p, &p1.x);
 	r.x.ModSub(&p2.x);       // rx = pow2(s) - p1.x - p2.x;
 
-	r.y.ModSub(&p1.x, &r.x);
+	r.y.ModSub(&p2.x, &r.x);
 	r.y.ModMulK1(&_s);
-	r.y.ModSub(&p1.y);       // ry = s*(p1.x - r.x) - p1.y
+	r.y.ModSub(&p2.y);       // ry = - p2.y - s*(ret.x-p2.x);
 
 	return r;
 
@@ -807,17 +796,6 @@ Point Secp256K1::Add2(Point& p1, Point& p2)
 	v1.ModMulK1(&p2.x, &p1.z);
 	u.ModSub(&u1, &p1.y);
 	v.ModSub(&v1, &p1.x);
-
-    // FIX: Corrected case from isZero to IsZero
-    if (v.IsZero()) {
-        if (u.IsZero()) {
-            return Double(p1);
-        } else {
-            r.Clear(); // Point at infinity
-            return r;
-        }
-    }
-
 	us2.ModSquareK1(&u);
 	vs2.ModSquareK1(&v);
 	vs3.ModMulK1(&vs2, &v);
@@ -831,7 +809,7 @@ Point Secp256K1::Add2(Point& p1, Point& p2)
 
 	vs3u2.ModMulK1(&vs3, &p1.y);
 	r.y.ModSub(&vs2v2, &a);
-	r.y.ModMulK1(&u);
+	r.y.ModMulK1(&r.y, &u);
 	r.y.ModSub(&vs3u2);
 
 	r.z.ModMulK1(&vs3, &p1.z);
@@ -858,6 +836,8 @@ Point Secp256K1::Add(Point& p1, Point& p2)
 	Int vs2v2;
 	Int vs3u2;
 	Int _2vs2v2;
+	Int x3;
+	Int vs3y1;
 	Point r;
 
 	u1.ModMulK1(&p2.y, &p1.z);
@@ -866,17 +846,6 @@ Point Secp256K1::Add(Point& p1, Point& p2)
 	v2.ModMulK1(&p1.x, &p2.z);
 	u.ModSub(&u1, &u2);
 	v.ModSub(&v1, &v2);
-
-    // FIX: Corrected case from isZero to IsZero
-	if (v.IsZero()) {
-	  if (u.IsZero())
-		return Double(p1);
-	  else {
-        r.Clear(); // Point at infinity
-		return r;
-      }
-	}
-
 	w.ModMulK1(&p1.z, &p2.z);
 	us2.ModSquareK1(&u);
 	vs2.ModSquareK1(&v);
@@ -891,7 +860,7 @@ Point Secp256K1::Add(Point& p1, Point& p2)
 
 	vs3u2.ModMulK1(&vs3, &u2);
 	r.y.ModSub(&vs2v2, &a);
-	r.y.ModMulK1(&u);
+	r.y.ModMulK1(&r.y, &u);
 	r.y.ModSub(&vs3u2);
 
 	r.z.ModMulK1(&vs3, &w);
@@ -908,12 +877,6 @@ Point Secp256K1::DoubleDirect(Point& p)
 	Point r;
 	r.z.SetInt32(1);
 
-    // FIX: Corrected case from isZero to IsZero
-	if(p.y.IsZero()) {
-		r.Clear();
-		return r;
-	}
-
 	_s.ModMulK1(&p.x, &p.x);
 	_p.ModAdd(&_s, &_s);
 	_p.ModAdd(&_s);
@@ -922,25 +885,22 @@ Point Secp256K1::DoubleDirect(Point& p)
 	a.ModInv();
 	_s.ModMulK1(&_p, &a);    // s = (3*pow2(p.x))*inverse(2*p.y);
 
-	_p.ModSquareK1(&_s);
+	_p.ModMulK1(&_s, &_s);
 	a.ModAdd(&p.x, &p.x);
-	r.x.ModSub(&_p, &a);   // rx = pow2(s) - 2*p.x;
+	a.ModNeg();
+	r.x.ModAdd(&a, &_p);   // rx = pow2(s) + neg(2*p.x);
 
-	a.ModSub(&p.x, &r.x);
+	a.ModSub(&r.x, &p.x);
+
 	_p.ModMulK1(&a, &_s);
-	r.y.ModSub(&_p, &p.y);
+	r.y.ModAdd(&_p, &p.y);
+	r.y.ModNeg();           // ry = neg(p.y + s*(ret.x+neg(p.x)));
 
 	return r;
 }
 
 Point Secp256K1::Double(Point& p)
 {
-	Point r;
-    // FIX: Corrected case from isZero to IsZero
-	if (p.y.IsZero()){
-		r.Clear();
-		return r;
-	}
 
 	Int z2;
 	Int x2;
@@ -953,15 +913,15 @@ Point Secp256K1::Double(Point& p)
 	Int _8y2s2;
 	Int y2;
 	Int h;
+	Point r;
 
 	z2.ModSquareK1(&p.z);
-    // a=0 for secp256k1, so a*z^2 is 0.
+	z2.SetInt32(0); // a=0
 	x2.ModSquareK1(&p.x);
 	_3x2.ModAdd(&x2, &x2);
-	_3x2.ModAdd(&_3x2, &x2);
-	w.Set(&_3x2); // W = 3 * X^2
+	_3x2.ModAdd(&x2);
+	w.ModAdd(&z2, &_3x2);
 	s.ModMulK1(&p.y, &p.z);
-    s2.ModSquareK1(&s);
 	b.ModMulK1(&p.y, &s);
 	b.ModMulK1(&p.x);
 	h.ModSquareK1(&w);
@@ -971,8 +931,9 @@ Point Secp256K1::Double(Point& p)
 	h.ModSub(&_8b);
 
 	r.x.ModMulK1(&h, &s);
-	r.x.ModAdd(&r.x, &r.x);
+	r.x.ModAdd(&r.x);
 
+	s2.ModSquareK1(&s);
 	y2.ModSquareK1(&p.y);
 	_8y2s2.ModMulK1(&y2, &s2);
 	_8y2s2.ModDouble();
@@ -985,7 +946,7 @@ Point Secp256K1::Double(Point& p)
 	r.y.ModMulK1(&w);
 	r.y.ModSub(&_8y2s2);
 
-	r.z.ModMulK1(&s2, &s); // Z' = S^3
+	r.z.ModMulK1(&s2, &s);
 	r.z.ModDouble();
 	r.z.ModDouble();
 	r.z.ModDouble();
@@ -993,7 +954,7 @@ Point Secp256K1::Double(Point& p)
 	return r;
 }
 
-Int Secp256K1::GetY(Int x, bool isOdd)
+Int Secp256K1::GetY(Int x, bool isEven)
 {
 
 	Int _s;
@@ -1004,7 +965,10 @@ Int Secp256K1::GetY(Int x, bool isOdd)
 	_p.ModAdd(7);
 	_p.ModSqrt();
 
-	if (_p.IsOdd() != isOdd) {
+	if (!_p.IsEven() && isEven) {
+		_p.ModNeg();
+	}
+	else if (_p.IsEven() && !isEven) {
 		_p.ModNeg();
 	}
 
@@ -1018,16 +982,12 @@ bool Secp256K1::EC(Point& p)
 	Int _s;
 	Int _p;
 
-	if(p.isZero()) return true;
-
 	_s.ModSquareK1(&p.x);
-    // FIX: Corrected undeclared variable 'x' to 'p.x'
 	_p.ModMulK1(&_s, &p.x);
 	_p.ModAdd(7);
-	_s.ModSquareK1(&p.y);
+	_s.ModMulK1(&p.y, &p.y);
 	_s.ModSub(&_p);
 
-    // FIX: Corrected case from isZero to IsZero
-	return _s.IsZero();
+	return _s.IsZero(); // ( ((pow2(y) - (pow3(x) + 7)) % P) == 0 );
 
 }
