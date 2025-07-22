@@ -849,9 +849,9 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 		params[i].obj = this;
 		params[i].threadId = i;
 		params[i].isRunning = true;
-		params[i].rangeStart.Set(¤tRangeStart);
+		params[i].rangeStart.Set(&currentRangeStart);
 		currentRangeStart.Add(&rangeDiff);
-		params[i].rangeEnd.Set(¤tRangeStart);
+		params[i].rangeEnd.Set(&currentRangeStart);
 #ifdef WIN64
 		DWORD thread_id;
 		CreateThread(NULL, 0, _FindKeyCPU, (void*)(params + i), 0, &thread_id);
@@ -870,9 +870,9 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 		params[nbCPUThread + i].gpuId = gpuId[i];
 		params[nbCPUThread + i].gridSizeX = gridSize[2 * i];
 		params[nbCPUThread + i].gridSizeY = gridSize[2 * i + 1];
-		params[nbCPUThread + i].rangeStart.Set(¤tRangeStart);
+		params[nbCPUThread + i].rangeStart.Set(&currentRangeStart);
 		currentRangeStart.Add(&rangeDiff);
-		params[nbCPUThread + i].rangeEnd.Set(¤tRangeStart);
+		params[nbCPUThread + i].rangeEnd.Set(&currentRangeStart);
 #ifdef WIN64
 		DWORD thread_id;
 		CreateThread(NULL, 0, _FindKeyGPU, (void*)(params + (nbCPUThread + i)), 0, &thread_id);
