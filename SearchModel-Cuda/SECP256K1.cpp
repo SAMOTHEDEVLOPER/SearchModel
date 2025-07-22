@@ -567,13 +567,13 @@ void Secp256K1::GetHash160(bool compressed, Point& pubKey, unsigned char* hash)
         // Use the exact same serialization as the SSE/GPU path for uncompressed keys
         uint32_t b[32];
         KEYBUFFUNCOMP(b, pubKey);
-        // Hash the serialized buffer (which is 65 bytes long)
+        // Hash the serialized buffer (which represents a 65-byte payload)
         sha256_65((unsigned char*)b, shapk);
     } else {
         // Use the exact same serialization as the SSE/GPU path for compressed keys
         uint32_t b[16];
         KEYBUFFCOMP(b, pubKey);
-        // Hash the serialized buffer (which is 33 bytes long)
+        // Hash the serialized buffer (which represents a 33-byte payload)
         sha256_33((unsigned char*)b, shapk);
     }
 
