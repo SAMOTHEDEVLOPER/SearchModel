@@ -189,7 +189,7 @@ BOOL WINAPI CtrlHandler(DWORD fdwCtrlType)
 #else
 void CtrlHandler(int signum) {
 	printf("\n\nBYE\n");
-	exit(signum);
+	should_exit = true;
 }
 #endif
 
@@ -217,7 +217,8 @@ int main(int argc, char** argv)
 
 	bool tSpecified = false;
 	bool useSSE = true;
-	uint32_t maxFound = 1024 * 64;
+	// FIX: Changed maxFound to 1 to stop after the first key is found.
+	uint32_t maxFound = 1;
 
 	uint64_t rKey = 0;
 
@@ -289,7 +290,7 @@ int main(int argc, char** argv)
 				return 0;
 			}
 			else if (optArg.equals("-l", "--list")) {
-#ifdef WIN64
+#ifdef WITHGPU
 				GPUEngine::PrintCudaInfo();
 #else
 				printf("GPU code not compiled, use -DWITHGPU when compiling.\n");
@@ -399,17 +400,17 @@ int main(int argc, char** argv)
 		{
 			address = ops[0];
 			if (coinType == COIN_BTC) {
-				if (address.length() < 30 || address[0] != '1') {
-					printf("Error: %s\n", "Invalid address, must have Bitcoin P2PKH address or Ethereum address");
-					usage();
-					return -1;
+				if (address.length() < 26 || (address[0] != '1' && address[0] != '3' && address.rfind("bc1", 0) != 0) ) {
+					printf("Error: %s\n", "Invalid address, must have Bitcoin P2PKH/P2SH address");
 				}
-				else {
-					if (DecodeBase58(address, hashORxpoint)) {
-						hashORxpoint.erase(hashORxpoint.begin() + 0);
-						hashORxpoint.erase(hashORxpoint.begin() + 20, hashORxpoint.begin() + 24);
-						assert(hashORxpoint.size() == 20);
-					}
+				
+				if (DecodeBase58(address, hashORxpoint)) {
+					hashORxpoint.erase(hashORxpoint.begin() + 0);
+					hashORxpoint.erase(hashORxpoint.begin() + 20, hashORxpoint.begin() + 24);
+					assert(hashORxpoint.size() == 20);
+				} else {
+					printf("Error: Failed to decode base58 address\n");
+					return -1;
 				}
 			}
 			else {
@@ -421,13 +422,8 @@ int main(int argc, char** argv)
 				address.erase(0, 2);
 				for (int i = 0; i < 40; i += 2) {
 					uint8_t c = 0;
-					for (size_t j = 0; j < 2; j++) {
-						uint32_t c0 = (uint32_t)address[i + j];
-						uint8_t c2 = (uint8_t)strtol((char*)&c0, NULL, 16);
-						if (j == 0)
-							c2 = c2 << 4;
-						c |= c2;
-					}
+					std::string byteString = address.substr(i, 2);
+					c = (uint8_t) strtol(byteString.c_str(), NULL, 16);
 					hashORxpoint.push_back(c);
 				}
 				assert(hashORxpoint.size() == 20);
@@ -471,15 +467,17 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	if (rangeStart.GetBitLength() <= 0) {
-		printf("Error: %s\n", "Invalid start range, provide start range at least, end range would be: start range + 0xFFFFFFFFFFFFULL\n");
-		usage();
-		return -1;
+	if (rangeStart.IsZero()) {
+		if (rangeEnd.IsZero()) {
+			printf("Error: %s\n", "Invalid range, provide a start or end range.\n");
+			usage();
+			return -1;
+		}
+		rangeStart.SetInt32(1);
 	}
 	if (nbCPUThread > 0 && gpuEnable) {
-		printf("Error: %s\n", "Invalid arguments, CPU and GPU, both can't be used together right now\n");
-		usage();
-		return -1;
+		printf("Warning: Both CPU and GPU are enabled. For now, only one can be used at a time. Disabling CPU threads.\n");
+		nbCPUThread = 0;
 	}
 
 	// Let one CPU core free per gpu is gpu is enabled
@@ -497,8 +495,9 @@ int main(int argc, char** argv)
 		printf("COMP MODE    : %s\n", compMode == SEARCH_COMPRESSED ? "COMPRESSED" : (compMode == SEARCH_UNCOMPRESSED ? "UNCOMPRESSED" : "COMPRESSED & UNCOMPRESSED"));
 	printf("COIN TYPE    : %s\n", coinType == COIN_BTC ? "BITCOIN" : "ETHEREUM");
 	printf("SEARCH MODE  : %s\n", searchMode == (int)SEARCH_MODE_MA ? "Multi Address" : (searchMode == (int)SEARCH_MODE_SA ? "Single Address" : (searchMode == (int)SEARCH_MODE_MX ? "Multi X Points" : "Single X Point")));
-	printf("DEVICE       : %s\n", (gpuEnable && nbCPUThread > 0) ? "CPU & GPU" : ((!gpuEnable && nbCPUThread > 0) ? "CPU" : "GPU"));
-	printf("CPU THREAD   : %d\n", nbCPUThread);
+	printf("DEVICE       : %s\n", (gpuEnable) ? "GPU" : "CPU");
+	if(nbCPUThread > 0)
+		printf("CPU THREAD   : %d\n", nbCPUThread);
 	if (gpuEnable) {
 		printf("GPU IDS      : ");
 		for (size_t i = 0; i < gpuId.size(); i++) {
@@ -534,7 +533,7 @@ int main(int argc, char** argv)
 			printf("BTC HASH160s : %s\n", inputFile.c_str());
 			break;
 		case (int)SEARCH_MODE_SA:
-			printf("BTC ADDRESS  : %s\n", address.c_str());
+			printf("BTC ADDRESS  : %s\n", ops[0].c_str());
 			break;
 		case (int)SEARCH_MODE_MX:
 			printf("BTC XPOINTS  : %s\n", inputFile.c_str());
@@ -591,25 +590,38 @@ int main(int argc, char** argv)
 	}
 #else
 	signal(SIGINT, CtrlHandler);
-	SearchModel* v;
-	switch (searchMode) {
-	case (int)SEARCH_MODE_MA:
-	case (int)SEARCH_MODE_MX:
-		v = new SearchModel(inputFile, compMode, searchMode, coinType, gpuEnable, outputFile, useSSE,
-			maxFound, rKey, rangeStart.GetBase16(), rangeEnd.GetBase16(), should_exit);
-		break;
-	case (int)SEARCH_MODE_SA:
-	case (int)SEARCH_MODE_SX:
-		v = new SearchModel(hashORxpoint, compMode, searchMode, coinType, gpuEnable, outputFile, useSSE,
-			maxFound, rKey, rangeStart.GetBase16(), rangeEnd.GetBase16(), should_exit);
-		break;
-	default:
-		printf("\n\nNothing to do, exiting\n");
-		return 0;
-		break;
+	SearchModel* v = nullptr;
+	try {
+		switch (searchMode) {
+		case (int)SEARCH_MODE_MA:
+		case (int)SEARCH_MODE_MX:
+			v = new SearchModel(inputFile, compMode, searchMode, coinType, gpuEnable, outputFile, useSSE,
+				maxFound, rKey, rangeStart.GetBase16(), rangeEnd.GetBase16(), should_exit);
+			break;
+		case (int)SEARCH_MODE_SA:
+		case (int)SEARCH_MODE_SX:
+			v = new SearchModel(hashORxpoint, compMode, searchMode, coinType, gpuEnable, outputFile, useSSE,
+				maxFound, rKey, rangeStart.GetBase16(), rangeEnd.GetBase16(), should_exit);
+			break;
+		default:
+			printf("\n\nNothing to do, exiting\n");
+			return 0;
+			break;
+		}
+		if(!should_exit) {
+			v->Search(nbCPUThread, gpuId, gridSize, should_exit);
+		}
 	}
-	v->Search(nbCPUThread, gpuId, gridSize, should_exit);
+	catch(const std::runtime_error& e) {
+		fprintf(stderr, "A runtime error occurred: %s\n", e.what());
+	}
+	catch(...) {
+		fprintf(stderr, "An unknown error occurred.\n");
+	}
 	delete v;
+	if(should_exit) {
+		exit(0);
+	}
 	return 0;
 #endif
 }
