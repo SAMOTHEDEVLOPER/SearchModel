@@ -878,11 +878,11 @@ void SearchModel::FindKeyGPU(TH_PARAM * ph)
 		break;
 	case (int)SEARCH_MODE_SA:
 		g = new GPUEngine(secp, ph->gridSizeX, ph->gridSizeY, ph->gpuId, maxFound, searchMode, compMode, coinType,
-			(uint8_t*)hash160Keccak, (rKey != 0));
+			reinterpret_cast<const uint32_t*>(hash160Keccak), (rKey != 0));
 		break;
 	case (int)SEARCH_MODE_SX:
 		g = new GPUEngine(secp, ph->gridSizeX, ph->gridSizeY, ph->gpuId, maxFound, searchMode, compMode, coinType,
-			(uint8_t*)xpoint, (rKey != 0));
+			reinterpret_cast<const uint32_t*>(xpoint), (rKey != 0));
 		break;
 	default:
 		printf("Invalid search mode format");
