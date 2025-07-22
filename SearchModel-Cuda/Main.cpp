@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <cassert>
 #include <algorithm>
+#include <inttypes.h> // For PRIu64
 #ifndef WIN64
 #include <signal.h>
 #include <unistd.h>
@@ -459,7 +460,7 @@ int main(int argc, char** argv)
 	}
 
 	if (gridSize.size() == 0) {
-		for (int i = 0; i < gpuId.size(); i++) {
+		for (size_t i = 0; i < gpuId.size(); i++) {
 			gridSize.push_back(-1);
 			gridSize.push_back(128);
 		}
@@ -500,14 +501,14 @@ int main(int argc, char** argv)
 	printf("CPU THREAD   : %d\n", nbCPUThread);
 	if (gpuEnable) {
 		printf("GPU IDS      : ");
-		for (int i = 0; i < gpuId.size(); i++) {
+		for (size_t i = 0; i < gpuId.size(); i++) {
 			printf("%d", gpuId.at(i));
 			if (i + 1 < gpuId.size())
 				printf(", ");
 		}
 		printf("\n");
 		printf("GPU GRIDSIZE : ");
-		for (int i = 0; i < gridSize.size(); i++) {
+		for (size_t i = 0; i < gridSize.size(); i++) {
 			printf("%d", gridSize.at(i));
 			if (i + 1 < gridSize.size()) {
 				if ((i + 1) % 2 != 0) {
@@ -525,7 +526,7 @@ int main(int argc, char** argv)
 			printf("\n");
 	}
 	printf("SSE          : %s\n", useSSE ? "YES" : "NO");
-	printf("RKEY         : %llu Mkeys\n", rKey);
+	printf("RKEY         : %" PRIu64 " Mkeys\n", rKey);
 	printf("MAX FOUND    : %d\n", maxFound);
 	if (coinType == COIN_BTC) {
 		switch (searchMode) {
