@@ -89,7 +89,7 @@ void CheckAddress(Secp256K1* T, std::string address, std::string privKeyStr)
 		return;
 	}
 
-	printf("Failed ! \n %s\n", calcAddress.c_t());
+	printf("Failed ! \n %s\n", calcAddress.c_str());
 
 }
 
