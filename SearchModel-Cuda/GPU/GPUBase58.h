@@ -39,35 +39,55 @@ __device__ __noinline__ void _GetAddress(int type, uint32_t *hash, char *b58Add)
     unsigned char A[25];
     unsigned char *addPtr = A;
     int retPos = 0;
-    unsigned char digits[128]; // Buffer for Base58 conversion
+    unsigned char digits[128];
 
-    // --- Checksum Calculation (Corrected Logic) ---
+    // --- Checksum Calculation (Corrected Logic using low-level primitives) ---
     uint32_t s[8]; // SHA256 state
     uint32_t chunk[16]; // 64-byte chunk for transform
 
-    // Step 1: First hash of (0x00 || 20-byte hash)
-    // The message is 21 bytes. We must pad it for SHA256.
-    unsigned char first_sha_input[21];
-    first_sha_input[0] = 0x00;
-    memcpy(first_sha_input + 1, (unsigned char*)hash, 20);
+    // Step 1: First hash of (0x00 || 20-byte hash). Message is 21 bytes.
+    // Manually create the first (and only) padded 64-byte block.
+    unsigned char sha_input_buf[64];
+    sha_input_buf[0] = 0x00;
+    memcpy(sha_input_buf + 1, (unsigned char*)hash, 20);
+    sha_input_buf[21] = 0x80; // Padding starts here
+    for(int i = 22; i < 56; i++) {
+        sha_input_buf[i] = 0x00;
+    }
+    // Length in bits (21 * 8 = 168) in big-endian format
+    sha_input_buf[56] = 0x00; sha_input_buf[57] = 0x00; sha_input_buf[58] = 0x00; sha_input_buf[59] = 0x00;
+    sha_input_buf[60] = 0x00; sha_input_buf[61] = 0x00; sha_input_buf[62] = 0x01; sha_input_buf[63] = 0x08;
 
-    SHA256_CTX ctx;
-    sha256_init(&ctx);
-    sha256_update(&ctx, first_sha_input, 21);
-    sha256_final(&ctx, (unsigned char*)s); // s now holds the first hash result (32 bytes)
+    SHA256Initialize(s);
+    SHA256Transform(s, (uint32_t*)sha_input_buf); // s now holds the first hash result
 
-    // Step 2: Second hash of the 32-byte result from the first hash
-    sha256_init(&ctx);
-    sha256_update(&ctx, (unsigned char*)s, 32);
-    sha256_final(&ctx, (unsigned char*)chunk); // chunk now holds the final hash
+    // Step 2: Second hash of the 32-byte result from the first hash.
+    // The state `s` is the 32-byte message. Pad it to 64 bytes.
+    memcpy(sha_input_buf, (unsigned char*)s, 32);
+    sha_input_buf[32] = 0x80; // Padding starts here
+    for(int i = 33; i < 56; i++) {
+        sha_input_buf[i] = 0x00;
+    }
+    // Length in bits (32 * 8 = 256) in big-endian format
+    sha_input_buf[62] = 0x01; sha_input_buf[63] = 0x00; // 256 = 0x100
 
-    // Step 3: Assemble the 25-byte address payload
+    SHA256Initialize(s);
+    SHA256Transform(s, (uint32_t*)sha_input_buf); // s now holds the final hash result
+
+    // Step 3: The checksum is the first 4 bytes of the final hash.
+    // The SHA256 transform produces big-endian words in the state array.
+    unsigned char checksum[4];
+    checksum[0] = (s[0] >> 24) & 0xFF;
+    checksum[1] = (s[0] >> 16) & 0xFF;
+    checksum[2] = (s[0] >> 8) & 0xFF;
+    checksum[3] = s[0] & 0xFF;
+
+    // Step 4: Assemble the 25-byte address payload
     A[0] = 0x00;
     memcpy(A + 1, (unsigned char*)hash, 20);
-    memcpy(A + 21, (unsigned char*)chunk, 4); // Checksum is the first 4 bytes of the final hash
+    memcpy(A + 21, checksum, 4);
 
     // --- Base58 Encoding (Original, Stable Logic) ---
-
     // Skip leading zeroes
     while (addPtr < (A + 25) && *addPtr == 0) {
         b58Add[retPos++] = '1';
