@@ -17,7 +17,8 @@
 
 #include "Base58.h"
 
-#include <algorithm>
+#include <vector>
+#include <string>
 #include <string.h>
 #include <cstdint>
 
@@ -26,105 +27,123 @@ static const char *pszBase58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnop
 
 static const int8_t b58digits_map[] = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, 0, 1, 2, 3, 4, 5, 6,  7, 8, -1, -1, -1, -1, -1, -1,
-            -1, 9, 10, 11, 12, 13, 14, 15, 16, -1, 17, 18, 19, 20, 21, -1,
-            22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, -1, -1, -1, -1, -1,
-            -1, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, -1, 44, 45, 46,
-            47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, -1, -1, -1, -1, -1,
-        };
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1,  0,  1,  2,  3,  4,  5,  6,  7,  8, -1, -1, -1, -1, -1, -1,
+    -1,  9, 10, 11, 12, 13, 14, 15, 16, -1, 17, 18, 19, 20, 21, -1,
+    22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, -1, -1, -1, -1, -1,
+    -1, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, -1, 44, 45, 46,
+    47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, -1, -1, -1, -1, -1,
+};
 
 bool DecodeBase58(const char *psz, std::vector<uint8_t> &vch)
 {
-
-    uint8_t digits[256];
-
-    // Skip and count leading '1'
+    // Skip and count leading '1's (which correspond to leading 0-bytes)
     int zeroes = 0;
     while (*psz == '1') {
         zeroes++;
         psz++;
     }
 
-    int length = (int)strlen(psz);
+    // Allocate enough space in big-endian base256 representation.
+    // Each Base58 digit carries log2(58) = 5.85 bits of information, so
+    // a N-char string will be roughly N * 5.85 / 8 bytes.
+    // A pessimistic estimate is N * 77 / 100.
+    size_t length = strlen(psz);
+    std::vector<uint8_t> b256(length * 77 / 100 + 1, 0); // Initialize with zeroes
 
-    // Process the characters
-    int digitslen = 1;
-    digits[0] = 0;
-    for (int i = 0; i < length; i++) {
-
+    // Process the characters.
+    for (size_t i = 0; i < length; i++) {
         // Decode base58 character
-        if (psz[i] & 0x80)
+        if (psz[i] & 0x80) // High-bit set on invalid character
             return false;
 
-        int8_t c = b58digits_map[psz[i]];
-        if (c < 0)
+        int8_t c = b58digits_map[static_cast<uint8_t>(psz[i])];
+        if (c < 0) // Invalid character
             return false;
 
-        uint32_t carry = (uint32_t)c;
-        for (int j = 0; j < digitslen; j++) {
-            carry += (uint32_t)(digits[j]) * 58;
-            digits[j] = (uint8_t)(carry % 256);
+        // Apply "b256 = b256 * 58 + c"
+        uint32_t carry = static_cast<uint32_t>(c);
+        for (size_t j = 0; j < b256.size(); ++j) {
+            size_t k = b256.size() - 1 - j; // Process from right to left
+            carry += static_cast<uint32_t>(b256[k]) * 58;
+            b256[k] = static_cast<uint8_t>(carry % 256);
             carry /= 256;
         }
-        while (carry > 0) {
-            digits[digitslen++] = (uint8_t)(carry % 256);
-            carry /= 256;
-        }
-
+        
+        // Should be fully carried, but as a precaution
+        if(carry != 0) return false;
     }
 
+    // Skip leading zeroes in b256.
+    auto it = b256.begin();
+    while (it != b256.end() && *it == 0) {
+        it++;
+    }
+    
+    // Copy result into output vector.
     vch.clear();
-    vch.reserve(zeroes + digitslen);
-    // zeros
-    for (int i = 0; i < zeroes; i++)
-        vch.push_back(0);
-
-    // reverse
-    for (int i = 0; i < digitslen; i++)
-        vch.push_back(digits[digitslen - 1 - i]);
+    vch.reserve(zeroes + (b256.end() - it));
+    vch.assign(zeroes, 0x00); // Prepend leading zero bytes
+    vch.insert(vch.end(), it, b256.end());
 
     return true;
-
 }
 
 std::string EncodeBase58(const unsigned char *pbegin, const unsigned char *pend)
 {
-
-    std::string ret;
-    unsigned char digits[256];
-
-    // Skip leading zeroes
-    while (pbegin != pend && *pbegin == 0) {
-        ret.push_back('1');
-        pbegin++;
+    // Skip and count leading zeroes.
+    int zeroes = 0;
+    const unsigned char *p = pbegin;
+    while (p != pend && *p == 0) {
+        p++;
+        zeroes++;
     }
-    int length = (int)(pend - pbegin);
+    
+    // Allocate enough space in big-endian base58 representation.
+    // Each byte requires log58(256) = 1.365 digits, so a N-byte input will be
+    // roughly N * 1.365 characters long.
+    // A pessimistic estimate is N * 137 / 100.
+    size_t size = (pend - p) * 137 / 100 + 1;
+    std::vector<uint8_t> b58(size, 0);
 
-    int digitslen = 1;
-    digits[0] = 0;
-    for (int i = 0; i < length; i++) {
-        uint32_t carry = pbegin[i];
-        for (int j = 0; j < digitslen; j++) {
-            carry += (uint32_t)(digits[j]) << 8;
-            digits[j] = (unsigned char)(carry % 58);
+    // Process the bytes.
+    while (p != pend) {
+        // Apply "b58 = b58 * 256 + *p"
+        uint32_t carry = *p;
+        for (size_t i = 0; i < b58.size(); i++) {
+            size_t k = b58.size() - 1 - i; // Process from right to left
+            carry += static_cast<uint32_t>(b58[k]) * 256;
+            b58[k] = static_cast<uint8_t>(carry % 58);
             carry /= 58;
         }
-        while (carry > 0) {
-            digits[digitslen++] = (unsigned char)(carry % 58);
-            carry /= 58;
-        }
+        
+        // Should be fully carried
+        if(carry != 0) return ""; // Error
+
+        p++;
     }
 
-    // reverse
-    for (int i = 0; i < digitslen; i++)
-        ret.push_back(pszBase58[digits[digitslen - 1 - i]]);
+    // Skip leading zeroes in b58.
+    auto it = b58.begin();
+    while (it != b58.end() && *it == 0) {
+        it++;
+    }
 
-    return ret;
+    // Build the final string.
+    std::string str;
+    str.reserve(zeroes + (b58.end() - it));
+    str.assign(zeroes, '1');
+    while (it != b58.end()) {
+        str += pszBase58[*it];
+        it++;
+    }
 
+    return str;
 }
 
+
+// Wrapper functions
 std::string EncodeBase58(const std::vector<unsigned char> &vch)
 {
     return EncodeBase58(vch.data(), vch.data() + vch.size());
@@ -134,4 +153,3 @@ bool DecodeBase58(const std::string &str, std::vector<unsigned char> &vchRet)
 {
     return DecodeBase58(str.c_str(), vchRet);
 }
-
