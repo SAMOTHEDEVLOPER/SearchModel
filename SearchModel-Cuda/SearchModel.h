@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <atomic> // For std::atomic
 #include "SECP256k1.h"
 #include "Bloom.h"
 #include "GPU/GPUEngine.h"
@@ -35,12 +36,12 @@ class SearchModel
 
 public:
 
-	SearchModel(const std::string& inputFile, int compMode, int searchMode, int coinType, bool useGpu, 
-		const std::string& outputFile, bool useSSE, uint32_t maxFound, uint64_t rKey, 
+	SearchModel(const std::string& inputFile, int compMode, int searchMode, int coinType, bool useGpu,
+		const std::string& outputFile, bool useSSE, uint32_t maxFound, uint64_t rKey,
 		const std::string& rangeStart, const std::string& rangeEnd, bool& should_exit);
 
-	SearchModel(const std::vector<unsigned char>& hashORxpoint, int compMode, int searchMode, int coinType, 
-		bool useGpu, const std::string& outputFile, bool useSSE, uint32_t maxFound, uint64_t rKey, 
+	SearchModel(const std::vector<unsigned char>& hashORxpoint, int compMode, int searchMode, int coinType,
+		bool useGpu, const std::string& outputFile, bool useSSE, uint32_t maxFound, uint64_t rKey,
 		const std::string& rangeStart, const std::string& rangeEnd, bool& should_exit);
 
 	~SearchModel();
@@ -58,15 +59,16 @@ private:
 	bool checkPrivKeyETH(std::string addr, Int& key, int32_t incr);
 	bool checkPrivKeyX(Int& key, int32_t incr, bool mode);
 
-	void checkMultiAddresses(bool compressed, Int key, int i, Point p1);
-	void checkMultiAddressesETH(Int key, int i, Point p1);
-	void checkSingleAddress(bool compressed, Int key, int i, Point p1);
-	void checkSingleAddressETH(Int key, int i, Point p1);
-	void checkMultiXPoints(bool compressed, Int key, int i, Point p1);
-	void checkSingleXPoint(bool compressed, Int key, int i, Point p1);
+    // FIX: Changed parameters to pass-by-reference to match the definitions in SearchModel.cpp
+	void checkMultiAddresses(bool compressed, Int& key, int i, Point& p1);
+	void checkMultiAddressesETH(Int& key, int i, Point& p1);
+	void checkSingleAddress(bool compressed, Int& key, int i, Point& p1);
+	void checkSingleAddressETH(Int& key, int i, Point& p1);
+	void checkMultiXPoints(bool compressed, Int& key, int i, Point& p1);
+	void checkSingleXPoint(bool compressed, Int& key, int i, Point& p1);
 
-	void checkMultiAddressesSSE(bool compressed, Int key, int i, Point p1, Point p2, Point p3, Point p4);
-	void checkSingleAddressesSSE(bool compressed, Int key, int i, Point p1, Point p2, Point p3, Point p4);
+	void checkMultiAddressesSSE(bool compressed, Int& key, int i, Point& p1, Point& p2, Point& p3, Point& p4);
+	void checkSingleAddressesSSE(bool compressed, Int& key, int i, Point& p1, Point& p2, Point& p3, Point& p4);
 
 	void output(std::string addr, std::string pAddr, std::string pAddrHex, std::string pubKey);
 	bool isAlive(TH_PARAM* p);
@@ -100,7 +102,8 @@ private:
 	bool endOfSearch;
 	int nbCPUThread;
 	int nbGPUThread;
-	int nbFoundKey;
+	// FIX: Changed nbFoundKey to std::atomic<int> to match the usage in SearchModel.cpp
+	std::atomic<int> nbFoundKey;
 	uint64_t targetCounter;
 
 	std::string outputFile;
