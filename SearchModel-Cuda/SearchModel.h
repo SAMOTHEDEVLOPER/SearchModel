@@ -81,8 +81,8 @@ private:
 	void getGPUStartingKeys(Int& tRangeStart, Int& tRangeEnd, int groupSize, int nbThread, Int* keys, Point* p);
 
 	int CheckBloomBinary(const uint8_t* _xx, uint32_t K_LENGTH);
-	bool MatchHash(uint32_t* _h);
-	bool MatchXPoint(uint32_t* _h);
+	bool MatchHash(const uint8_t* _h);
+	bool MatchXPoint(const uint8_t* _h);
 	std::string formatThousands(uint64_t x);
 	char* toTimeStr(int sec, char* timeStr);
 
