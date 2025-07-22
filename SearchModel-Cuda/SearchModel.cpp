@@ -3,7 +3,7 @@
 #include "Base58.h"
 #include "hash/sha256.h"
 #include "hash/keccak160.h"
-include "IntGroup.h"
+#include "IntGroup.h" // <--- FIXED: Re-added the missing '#'
 #include "Timer.h"
 #include "hash/ripemd160.h"
 #include <cstring>
@@ -1174,19 +1174,18 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 	uint64_t rKeyCount = 0;
 	while (isAlive(params)) {
 
-        //-FIX- START: Changed reporting interval from 2 seconds to 15 seconds
+        // Changed reporting interval from 2 seconds to 15 seconds
 		int delay = 15000;
 		while (isAlive(params) && delay > 0) {
 			Timer::SleepMillis(500);
 			delay -= 500;
 		}
-        //-FIX- END
 
 		gpuCount = getGPUCount();
 		uint64_t count = getCPUCount() + gpuCount;
 		
 		if (rKey <= 0 && !rangeDiff2.IsZero()) {
-            //-FIX- START: Uncommented and corrected percentage calculation
+            // Uncommented and corrected percentage calculation
             Int currentCount;
             currentCount.SetInt64(count);
 
@@ -1199,7 +1198,6 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
                 // In case of conversion error, default to 0
                 completedPerc = 0;
             }
-            //-FIX- END
 		}
         int completedBits = 0;
         if(count > 0) {
