@@ -4,7 +4,6 @@
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
-
  * the Free Software Foundation, version 3.
  *
  * This program is distributed in the hope that it will be useful, but
@@ -566,12 +565,14 @@ void Secp256K1::GetHash160(bool compressed, Point& pubKey, unsigned char* hash)
         // Use the same serialization as the SSE path for uncompressed keys
         uint32_t b[32];
         KEYBUFFUNCOMP(b, pubKey);
-        sha256_2B(b, shapk); // Use a single-buffer SHA256 variant
+        // Cast the buffer to unsigned char* and use the existing sha256_65 function
+        sha256_65((unsigned char*)b, shapk);
     } else {
         // Use the same serialization as the SSE path for compressed keys
         uint32_t b[16];
         KEYBUFFCOMP(b, pubKey);
-        sha256_1B(b, shapk); // Use a single-buffer SHA256 variant
+        // Cast the buffer to unsigned char* and use the existing sha256_33 function
+        sha256_33((unsigned char*)b, shapk);
     }
 
     ripemd160_32(shapk, hash);
@@ -852,7 +853,7 @@ Point Secp256K1::Add(Point& p1, Point& p2)
 	us2w.ModMulK1(&us2, &w);
 	vs2v2.ModMulK1(&vs2, &v2);
 	_2vs2v2.ModAdd(&vs2v2, &vs2v2);
-a.ModSub(&us2w, &vs3);
+	a.ModSub(&us2w, &vs3);
 	a.ModSub(&_2vs2v2);
 
 	r.x.ModMulK1(&v, &a);
