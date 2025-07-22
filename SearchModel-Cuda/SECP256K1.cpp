@@ -89,7 +89,7 @@ void CheckAddress(Secp256K1* T, std::string address, std::string privKeyStr)
 		return;
 	}
 
-	printf("Failed ! \n %s\n", calcAddress.c_str());
+	printf("Failed ! \n %s\n", calcAddress.c_t());
 
 }
 
@@ -272,7 +272,7 @@ Int Secp256K1::DecodePrivateKey(char* key, bool* compressed)
 (buff)[5] = ((p).x.bits[2] >> 8) | ((p).x.bits[3] <<24); \
 (buff)[6] = ((p).x.bits[1] >> 8) | ((p).x.bits[2] <<24); \
 (buff)[7] = ((p).x.bits[0] >> 8) | ((p).x.bits[1] <<24); \
-(buff)[8] = 0x00800000 | ((p).x.bits[0] <<24); \
+(buff)[8] = 0x00800000 | ((uint32_t)(((unsigned char*)&p.x.bits[0])[0]) << 24); \
 (buff)[9] = 0; \
 (buff)[10] = 0; \
 (buff)[11] = 0; \
@@ -290,7 +290,7 @@ Int Secp256K1::DecodePrivateKey(char* key, bool* compressed)
 (buff)[5] = ((p).x.bits[2] >> 8) | ((p).x.bits[3] <<24); \
 (buff)[6] = ((p).x.bits[1] >> 8) | ((p).x.bits[2] <<24); \
 (buff)[7] = ((p).x.bits[0] >> 8) | ((p).x.bits[1] <<24); \
-(buff)[8] = ((p).y.bits[7] >> 8) | ((p).x.bits[0] <<24); \
+(buff)[8] = ((p).y.bits[7] >> 8) | ((uint32_t)(((unsigned char*)&p.x.bits[0])[0]) << 24); \
 (buff)[9] = ((p).y.bits[6] >> 8) | ((p).y.bits[7] <<24); \
 (buff)[10] = ((p).y.bits[5] >> 8) | ((p).y.bits[6] <<24); \
 (buff)[11] = ((p).y.bits[4] >> 8) | ((p).y.bits[5] <<24); \
@@ -298,7 +298,7 @@ Int Secp256K1::DecodePrivateKey(char* key, bool* compressed)
 (buff)[13] = ((p).y.bits[2] >> 8) | ((p).y.bits[3] <<24); \
 (buff)[14] = ((p).y.bits[1] >> 8) | ((p).y.bits[2] <<24); \
 (buff)[15] = ((p).y.bits[0] >> 8) | ((p).y.bits[1] <<24); \
-(buff)[16] = 0x00800000 | ((p).y.bits[0] <<24); \
+(buff)[16] = 0x00800000 | ((uint32_t)(((unsigned char*)&p.y.bits[0])[0]) << 24); \
 (buff)[17] = 0; \
 (buff)[18] = 0; \
 (buff)[19] = 0; \
