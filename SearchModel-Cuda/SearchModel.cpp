@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <iostream>
 #include <cassert>
-#include <atomic> // For atomic operations
+#include <atomic>
 #include <inttypes.h> // For PRIu64
 #ifndef WIN64
 #include <pthread.h>
@@ -22,8 +22,7 @@
 Point Gn[CPU_GRP_SIZE / 2];
 Point _2Gn;
 
-// FIX: Make nbFoundKey atomic to ensure thread-safe increments and visibility across threads.
-std::atomic<int> nbFoundKey;
+// Note: The declaration is now in SearchModel.h as a class member `std::atomic<int> nbFoundKey;`
 
 // ----------------------------------------------------------------------------
 
@@ -46,8 +45,7 @@ SearchModel::SearchModel(const std::string& inputFile, int compMode, int searchM
 	this->rangeDiff2.Set(&this->rangeEnd);
 	this->rangeDiff2.Sub(&this->rangeStart);
 	this->lastrKey = 0;
-
-	nbFoundKey = 0; // Initialize atomic counter
+	this->nbFoundKey = 0;
 
 	secp = new Secp256K1();
 	secp->Init();
@@ -153,8 +151,7 @@ SearchModel::SearchModel(const std::vector<unsigned char>& hashORxpoint, int com
 	this->rangeDiff2.Set(&this->rangeEnd);
 	this->rangeDiff2.Sub(&this->rangeStart);
 	this->targetCounter = 1;
-
-	nbFoundKey = 0; // Initialize atomic counter
+	this->nbFoundKey = 0;
 
 	secp = new Secp256K1();
 	secp->Init();
@@ -217,8 +214,6 @@ SearchModel::~SearchModel()
 
 void SearchModel::output(std::string addr, std::string pAddr, std::string pAddrHex, std::string pubKey)
 {
-	// FIX: Use a dedicated mutex for output operations to avoid deadlocks
-	// and ensure found keys are written correctly and the counter is incremented.
 #ifdef WIN64
 	WaitForSingleObject(ghMutex, INFINITE);
 #else
@@ -242,24 +237,24 @@ void SearchModel::output(std::string addr, std::string pAddr, std::string pAddrH
 	if (!needToClose)
 		printf("\n");
 
-	fprintf(f, "PubAddress: %s\n", addr.c_str());
 	fprintf(stdout, "\n\n!!!!!!!!!!!!!!!!!!!! KEY FOUND !!!!!!!!!!!!!!!!!!!!\n");
 	fprintf(stdout, "=================================================================================\n");
 	fprintf(stdout, "PubAddress: %s\n", addr.c_str());
+	fprintf(f, "PubAddress: %s\n", addr.c_str());
 
 	if (coinType == COIN_BTC) {
-		fprintf(f, "Priv (WIF): %s\n", pAddr.c_str());
 		fprintf(stdout, "Priv (WIF): %s\n", pAddr.c_str());
+		fprintf(f, "Priv (WIF): %s\n", pAddr.c_str());
 	}
 
-	fprintf(f, "Priv (HEX): %s\n", pAddrHex.c_str());
 	fprintf(stdout, "Priv (HEX): %s\n", pAddrHex.c_str());
+	fprintf(f, "Priv (HEX): %s\n", pAddrHex.c_str());
 
-	fprintf(f, "PubK (HEX): %s\n", pubKey.c_str());
 	fprintf(stdout, "PubK (HEX): %s\n", pubKey.c_str());
-
-	fprintf(f, "=================================================================================\n\n");
+	fprintf(f, "PubK (HEX): %s\n", pubKey.c_str());
+	
 	fprintf(stdout, "=================================================================================\n\n");
+	fprintf(f, "=================================================================================\n");
 	
 	fflush(f);
 	fflush(stdout);
@@ -267,7 +262,7 @@ void SearchModel::output(std::string addr, std::string pAddr, std::string pAddrH
 	if (needToClose)
 		fclose(f);
 
-	nbFoundKey++; // Atomically increment the found counter
+	nbFoundKey++;
 
 #ifdef WIN64
 	ReleaseMutex(ghMutex);
@@ -282,8 +277,7 @@ bool SearchModel::checkPrivKey(std::string addr, Int& key, int32_t incr, bool mo
 {
 	Int k(&key);
 	k.Add((uint64_t)incr);
-
-	// Create a copy for the warning message in case of failure
+	
 	Int originalKeyForWarning(&k);
 
 	Point p = secp->ComputePublicKey(&k);
@@ -294,7 +288,6 @@ bool SearchModel::checkPrivKey(std::string addr, Int& key, int32_t incr, bool mo
 		return true;
 	}
 
-	// If the first check fails, try the negative key (for compressed keys)
 	k.Neg();
 	k.Add(&secp->order);
 	p = secp->ComputePublicKey(&k);
@@ -305,15 +298,6 @@ bool SearchModel::checkPrivKey(std::string addr, Int& key, int32_t incr, bool mo
 		return true;
 	}
 
-	// If both checks fail, print a detailed warning.
-	// This should not happen with the previous fixes but is good for debugging.
-	printf("\n=================================================================================\n");
-	printf("Warning, wrong private key generated !\n");
-	printf("  Target Addr :%s\n", addr.c_str());
-	printf("  Initial PivK:%s\n", originalKeyForWarning.GetBase16().c_str());
-	printf("  Checked Addr:%s\n", chkAddr.c_str());
-	printf("=================================================================================\n");
-
 	return false;
 }
 
@@ -322,8 +306,6 @@ bool SearchModel::checkPrivKeyETH(std::string addr, Int& key, int32_t incr)
 {
 	Int k(&key);
 	k.Add((uint64_t)incr);
-	
-	Int originalKeyForWarning(&k);
 
 	Point p = secp->ComputePublicKey(&k);
 	std::string chkAddr = secp->GetAddressETH(p);
@@ -332,14 +314,6 @@ bool SearchModel::checkPrivKeyETH(std::string addr, Int& key, int32_t incr)
 		output(addr, "", k.GetBase16(), secp->GetPublicKeyHexETH(p));
 		return true;
 	}
-	
-	// ETH doesn't use negative keys for addresses, so we only check once.
-	printf("\n=================================================================================\n");
-	printf("Warning, wrong private key generated for ETH!\n");
-	printf("  Target Addr :%s\n", addr.c_str());
-	printf("  Initial PivK:%s\n", originalKeyForWarning.GetBase16().c_str());
-	printf("  Checked Addr:%s\n", chkAddr.c_str());
-	printf("=================================================================================\n");
 
 	return false;
 }
@@ -351,7 +325,7 @@ bool SearchModel::checkPrivKeyX(Int& key, int32_t incr, bool mode)
 	Point p = secp->ComputePublicKey(&k);
 	std::string addr = secp->GetAddress(mode, p);
 	output(addr, secp->GetPrivAddress(mode, k), k.GetBase16(), secp->GetPublicKeyHex(mode, p));
-	return true; // Assume XPoint checks are always valid if they match bloom/target
+	return true;
 }
 
 // ----------------------------------------------------------------------------
@@ -710,6 +684,7 @@ void SearchModel::FindKeyGPU(TH_PARAM * ph)
 		break;
 	default:
 		printf("Invalid search mode format");
+		ph->isRunning = false;
 		return;
 	}
 
@@ -734,23 +709,32 @@ void SearchModel::FindKeyGPU(TH_PARAM * ph)
 		}
 
 		found.clear();
+
+		// FIX: Restored the original switch statement to call the correct launch function.
 		switch (searchMode) {
 		case (int)SEARCH_MODE_MA:
-		case (int)SEARCH_MODE_MX:
-		case (int)SEARCH_MODE_SA:
-		case (int)SEARCH_MODE_SX:
-			ok = g->Launch(found);
-			for (const auto& it : found) {
-				if(endOfSearch) break;
-				if (coinType == COIN_BTC) {
-					std::string addr = secp->GetAddress(it.mode, it.hash);
-					checkPrivKey(addr, keys[it.thId], it.incr, it.mode);
-				} else { // ETH
-					std::string addr = secp->GetAddressETH(it.hash);
-					checkPrivKeyETH(addr, keys[it.thId], it.incr);
-				}
-			}
+			ok = g->LaunchSEARCH_MODE_MA(found, false);
 			break;
+		case (int)SEARCH_MODE_MX:
+			ok = g->LaunchSEARCH_MODE_MX(found, false);
+			break;
+		case (int)SEARCH_MODE_SA:
+			ok = g->LaunchSEARCH_MODE_SA(found, false);
+			break;
+		case (int)SEARCH_MODE_SX:
+			ok = g->LaunchSEARCH_MODE_SX(found, false);
+			break;
+		}
+
+		for (const auto& it : found) {
+			if(endOfSearch) break;
+			if (coinType == COIN_BTC) {
+				std::string addr = secp->GetAddress(it.mode, it.hash);
+				checkPrivKey(addr, keys[it.thId], it.incr, it.mode);
+			} else { // ETH
+				std::string addr = secp->GetAddressETH(it.hash);
+				checkPrivKeyETH(addr, keys[it.thId], it.incr);
+			}
 		}
 
 		if (ok) {
@@ -777,13 +761,14 @@ void SearchModel::FindKeyGPU(TH_PARAM * ph)
 
 bool SearchModel::isAlive(TH_PARAM * p)
 {
-	bool isAlive = false; // Changed initial value
+	bool isAlive = false;
 	int total = nbCPUThread + nbGPUThread;
-	for (int i = 0; i < total; i++)
+	for (int i = 0; i < total; i++) {
 		if(p[i].isRunning) {
             isAlive = true;
             break;
         }
+	}
 	return isAlive;
 }
 
@@ -858,21 +843,23 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 	TH_PARAM* params = (TH_PARAM*)malloc((nbCPUThread + nbGPUThread) * sizeof(TH_PARAM));
 	memset(params, 0, (nbCPUThread + nbGPUThread) * sizeof(TH_PARAM));
 
+	Int currentRangeStart = this->rangeStart;
+
 	for (int i = 0; i < nbCPUThread; i++) {
 		params[i].obj = this;
 		params[i].threadId = i;
 		params[i].isRunning = true;
-		params[i].rangeStart.Set(&rangeStart);
-		rangeStart.Add(&rangeDiff);
-		params[i].rangeEnd.Set(&rangeStart);
+		params[i].rangeStart.Set(¤tRangeStart);
+		currentRangeStart.Add(&rangeDiff);
+		params[i].rangeEnd.Set(¤tRangeStart);
 #ifdef WIN64
 		DWORD thread_id;
 		CreateThread(NULL, 0, _FindKeyCPU, (void*)(params + i), 0, &thread_id);
-		ghMutex = CreateMutex(NULL, FALSE, NULL);
+		if(i==0) ghMutex = CreateMutex(NULL, FALSE, NULL);
 #else
 		pthread_t thread_id;
 		pthread_create(&thread_id, NULL, &_FindKeyCPU, (void*)(params + i));
-		pthread_mutex_init(&ghMutex, NULL);
+		if(i==0) pthread_mutex_init(&ghMutex, NULL);
 #endif
 	}
 
@@ -883,9 +870,9 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 		params[nbCPUThread + i].gpuId = gpuId[i];
 		params[nbCPUThread + i].gridSizeX = gridSize[2 * i];
 		params[nbCPUThread + i].gridSizeY = gridSize[2 * i + 1];
-		params[nbCPUThread + i].rangeStart.Set(&rangeStart);
-		rangeStart.Add(&rangeDiff);
-		params[nbCPUThread + i].rangeEnd.Set(&rangeStart);
+		params[nbCPUThread + i].rangeStart.Set(¤tRangeStart);
+		currentRangeStart.Add(&rangeDiff);
+		params[nbCPUThread + i].rangeEnd.Set(¤tRangeStart);
 #ifdef WIN64
 		DWORD thread_id;
 		CreateThread(NULL, 0, _FindKeyGPU, (void*)(params + (nbCPUThread + i)), 0, &thread_id);
@@ -921,17 +908,15 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 	uint64_t rKeyCount = 0;
 
 	while (isAlive(params)) {
-		// FIX: Update status less frequently to avoid spamming the console
-		int delay = 15000;
-		Timer::SleepMillis(delay);
+		Timer::SleepMillis(15000);
 
 		gpuCount = getGPUCount();
 		uint64_t count = getCPUCount() + gpuCount;
 		
-        // FIX: Corrected percentage calculation logic
 		if (rKey <= 0 && !rangeDiff2.IsZero()) {
 			Int ICount(count);
-			Int p100(100);
+			// FIX: Resolve ambiguous constructor by casting to uint64_t
+			Int p100((uint64_t)100);
 			ICount.Mult(&p100);
 			ICount.Div(&this->rangeDiff2);
 			try {
@@ -943,8 +928,7 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 
 		int completedBits = 0;
 		if(count > 0) {
-			Int tempCount;
-			tempCount.SetInt64(count);
+			Int tempCount((uint64_t)count);
 			completedBits = tempCount.GetBitLength();
 		}
 
@@ -978,7 +962,7 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 				rKeyCount,
 				formatThousands(count).c_str(),
 				completedBits,
-				nbFoundKey.load()); // FIX: Use atomic load
+				nbFoundKey.load());
 		}
 		if (rKey > 0) {
 			if ((count - lastrKey) > (1000000 * rKey)) {
@@ -995,7 +979,7 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 			endOfSearch = true;
 	}
 	
-	printf("\n"); // Print a newline to preserve the final status line
+	printf("\n");
 	free(params);
 }
 
