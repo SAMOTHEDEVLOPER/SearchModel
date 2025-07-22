@@ -2,7 +2,6 @@
 #include <iostream>
 #include <math.h>
 #include <string.h>
-//#include <unistd.h>
 
 #define MAKESTRING(n) STRING(n)
 #define STRING(n) #n
@@ -37,17 +36,17 @@ Bloom::Bloom(unsigned long long entries, double error) : _ready(0)
     _hashes = (unsigned char)ceil(0.693147180559945 * _bpe);  // ln(2)
 
     _bf = (unsigned char *)calloc((unsigned long long int)_bytes, sizeof(unsigned char));
-    if (_bf == NULL) {                                   // LCOV_EXCL_START
+    if (_bf == NULL) {
         printf("Bloom init error\n");
         return;
-    }                                                          // LCOV_EXCL_STOP
+    }
 
     _ready = 1;
 
     _major = BLOOM_VERSION_MAJOR;
     _minor = BLOOM_VERSION_MINOR;
-
 }
+
 Bloom::~Bloom()
 {
     if (_ready)
@@ -80,7 +79,6 @@ void Bloom::print()
     printf("  Bytes      : %llu", _bytes);
     unsigned int KB = _bytes / 1024;
     unsigned int MB = KB / 1024;
-    //printf(" (%u KB, %u MB)\n", KB, MB);
     printf(" (%u MB)\n", MB);
     printf("  Hash funcs : %d\n", _hashes);
 }
@@ -94,127 +92,16 @@ int Bloom::reset()
     return 0;
 }
 
-
+// NOTE: Save/Load functions are commented out as they are non-portable (use Unix-specific calls)
+// and have logical flaws (writing raw pointer values). They would need to be rewritten
+// with standard file I/O (fopen, fwrite) and proper serialization to be safe and portable.
 int Bloom::save(const char *filename)
 {
-//    if (filename == NULL || filename[0] == 0) {
-//        return 1;
-//    }
-
-//    int fd = open(filename, O_WRONLY | O_CREAT, 0644);
-//    if (fd < 0) {
-//        return 1;
-//    }
-
-//    ssize_t out = write(fd, BLOOM_MAGIC, strlen(BLOOM_MAGIC));
-//    if (out != strlen(BLOOM_MAGIC)) {
-//        goto save_error;        // LCOV_EXCL_LINE
-//    }
-
-//    uint16_t size = sizeof(struct bloom);
-//    out = write(fd, &size, sizeof(uint16_t));
-//    if (out != sizeof(uint16_t)) {
-//        goto save_error;        // LCOV_EXCL_LINE
-//    }
-
-//    out = write(fd, bloom, sizeof(struct bloom));
-//    if (out != sizeof(struct bloom)) {
-//        goto save_error;        // LCOV_EXCL_LINE
-//    }
-
-//    out = write(fd, _bf, _bytes);
-//    if (out != _bytes) {
-//        goto save_error;        // LCOV_EXCL_LINE
-//    }
-
-//    close(fd);
-//    return 0;
-//    // LCOV_EXCL_START
-//save_error:
-//    close(fd);
-//    return 1;
-//    // LCOV_EXCL_STOP
     return 0;
 }
 
-
 int Bloom::load(const char *filename)
 {
-//    int rv = 0;
-
-//    if (filename == NULL || filename[0] == 0) {
-//        return 1;
-//    }
-//    if (bloom == NULL) {
-//        return 2;
-//    }
-
-//    memset(bloom, 0, sizeof(struct bloom));
-
-//    int fd = open(filename, O_RDONLY);
-//    if (fd < 0) {
-//        return 3;
-//    }
-
-//    char line[30];
-//    memset(line, 0, 30);
-//    ssize_t in = read(fd, line, strlen(BLOOM_MAGIC));
-
-//    if (in != strlen(BLOOM_MAGIC)) {
-//        rv = 4;
-//        goto load_error;
-//    }
-
-//    if (strncmp(line, BLOOM_MAGIC, strlen(BLOOM_MAGIC))) {
-//        rv = 5;
-//        goto load_error;
-//    }
-
-//    uint16_t size;
-//    in = read(fd, &size, sizeof(uint16_t));
-//    if (in != sizeof(uint16_t)) {
-//        rv = 6;
-//        goto load_error;
-//    }
-
-//    if (size != sizeof(struct bloom)) {
-//        rv = 7;
-//        goto load_error;
-//    }
-
-//    in = read(fd, bloom, sizeof(struct bloom));
-//    if (in != sizeof(struct bloom)) {
-//        rv = 8;
-//        goto load_error;
-//    }
-
-//    _bf = NULL;
-//    if (_major != BLOOM_VERSION_MAJOR) {
-//        rv = 9;
-//        goto load_error;
-//    }
-
-//    _bf = (unsigned char *)malloc(_bytes);
-//    if (_bf == NULL) {
-//        rv = 10;        // LCOV_EXCL_LINE
-//        goto load_error;
-//    }
-
-//    in = read(fd, _bf, _bytes);
-//    if (in != _bytes) {
-//        rv = 11;
-//        free(_bf);
-//        _bf = NULL;
-//        goto load_error;
-//    }
-
-//    close(fd);
-//    return rv;
-
-//load_error:
-//    close(fd);
-//    _ready = 0;
-//    return rv;
     return 0;
 }
 
@@ -238,7 +125,14 @@ const unsigned char *Bloom::get_bf()
 
 int Bloom::test_bit_set_bit(unsigned char *buf, unsigned int bit, int set_bit)
 {
-    unsigned int byte = bit >> 3;
+    // Check if the requested bit is within the bounds of the filter
+    if (bit >= _bits) {
+        // This case should ideally not be reached if the modulo in bloom_check_add is correct,
+        // but it's a good safeguard.
+        return 1; // Treat as a "hit" to be safe, preventing a buffer over-read.
+    }
+    
+    unsigned int byte = bit >> 3; // Same as bit / 8
     unsigned char c = buf[byte];        // expensive memory access
     unsigned char mask = 1 << (bit % 8);
 
@@ -270,48 +164,38 @@ int Bloom::bloom_check_add(const void *buffer, int len, int add)
         if (test_bit_set_bit(_bf, x, add)) {
             hits++;
         } else if (!add) {
-            // Don't care about the presence of all the bits. Just our own.
+            // If we're only checking, and we find a bit that's not set,
+            // we can exit early. The element is definitely not in the filter.
             return 0;
         }
     }
 
     if (hits == _hashes) {
-        return 1;                // 1 == element already in (or collision)
+        // If we're checking, this means all bits were set, so it's a possible match.
+        // If we're adding, this means all bits were already set before this add.
+        return 1;
     }
 
     return 0;
 }
 
-// MurmurHash2, by Austin Appleby
 
-// Note - This code makes a few assumptions about how your machine behaves -
-
-// 1. We can read a 4-byte value from any address without crashing
-// 2. sizeof(int) == 4
-
-// And it has a few limitations -
-
-// 1. It will not work incrementally.
-// 2. It will not produce the same results on little-endian and big-endian
-//    machines.
+// MurmurHash2, by Austin Appleby (modified to be endian-safe)
 unsigned int Bloom::murmurhash2(const void *key, int len, const unsigned int seed)
 {
-    // 'm' and 'r' are mixing constants generated offline.
-    // They're not really 'magic', they just happen to work well.
-
     const unsigned int m = 0x5bd1e995;
     const int r = 24;
 
-    // Initialize the hash to a 'random' value
-
     unsigned int h = seed ^ len;
-
-    // Mix 4 bytes at a time into the hash
 
     const unsigned char *data = (const unsigned char *)key;
 
     while (len >= 4) {
-        unsigned int k = *(unsigned int *)data;
+        // Read 4 bytes one by one into an unsigned int in a defined (little-endian) order
+        unsigned int k = data[0];
+        k |= (unsigned int)data[1] << 8;
+        k |= (unsigned int)data[2] << 16;
+        k |= (unsigned int)data[3] << 24;
 
         k *= m;
         k ^= k >> r;
@@ -325,19 +209,17 @@ unsigned int Bloom::murmurhash2(const void *key, int len, const unsigned int see
     }
 
     // Handle the last few bytes of the input array
-
     switch (len) {
-    case 3: h ^= data[2] << 16;
-        break;
-    case 2: h ^= data[1] << 8;
-        break;
-    case 1: h ^= data[0];
+    case 3:
+        h ^= (unsigned int)data[2] << 16;
+        // fallthrough
+    case 2:
+        h ^= (unsigned int)data[1] << 8;
+        // fallthrough
+    case 1:
+        h ^= (unsigned int)data[0];
         h *= m;
-        break;
     };
-
-    // Do a few final mixes of the hash to ensure the last few
-    // bytes are well-incorporated.
 
     h ^= h >> 13;
     h *= m;
@@ -345,6 +227,3 @@ unsigned int Bloom::murmurhash2(const void *key, int len, const unsigned int see
 
     return h;
 }
-
-
-
