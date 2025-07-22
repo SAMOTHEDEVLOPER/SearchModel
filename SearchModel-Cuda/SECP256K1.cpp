@@ -546,38 +546,41 @@ void Secp256K1::GetPubKeyBytes(bool compressed, Point& pubKey, unsigned char* pu
 void Secp256K1::GetXBytes(bool compressed, Point& pubKey, unsigned char* publicKeyBytes)
 {
 	if (!compressed) {
+
 		// Full public key
 		pubKey.x.Get32Bytes(publicKeyBytes);
 		pubKey.y.Get32Bytes(publicKeyBytes + 32);
 	}
 	else {
+
 		// Compressed public key
 		pubKey.x.Get32Bytes(publicKeyBytes);
 	}
 }
 
-//-FIX- START: This function is rewritten to be consistent with the SSE/GPU path
+// THIS IS THE CORRECTED FUNCTION FOR SINGLE-KEY VERIFICATION
 void Secp256K1::GetHash160(bool compressed, Point& pubKey, unsigned char* hash)
 {
-    unsigned char shapk[64];
+    unsigned char shapk[32]; // SHA-256 output is 32 bytes
 
     if (!compressed) {
-        // Use the same serialization as the SSE path for uncompressed keys
+        // Use the exact same serialization as the SSE/GPU path for uncompressed keys
         uint32_t b[32];
         KEYBUFFUNCOMP(b, pubKey);
-        // Cast the buffer to unsigned char* and use the existing sha256_65 function
+        // Hash the serialized buffer (which is 65 bytes long)
         sha256_65((unsigned char*)b, shapk);
     } else {
-        // Use the same serialization as the SSE path for compressed keys
+        // Use the exact same serialization as the SSE/GPU path for compressed keys
         uint32_t b[16];
         KEYBUFFCOMP(b, pubKey);
-        // Cast the buffer to unsigned char* and use the existing sha256_33 function
+        // Hash the serialized buffer (which is 33 bytes long)
         sha256_33((unsigned char*)b, shapk);
     }
 
+    // This part is consistent across all paths
     ripemd160_32(shapk, hash);
 }
-//-FIX- END
+
 
 void Secp256K1::GetHashETH(Point& pubKey, unsigned char* hash)
 {
@@ -607,6 +610,7 @@ std::string Secp256K1::GetPrivAddress(bool compressed, Int& privKey)
 		return EncodeBase58(address, address + 37);
 
 	}
+
 }
 
 #define CHECKSUM(buff,A) \
