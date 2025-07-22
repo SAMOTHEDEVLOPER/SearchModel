@@ -287,7 +287,7 @@ bool SearchModel::checkPrivKey(std::string addr, Int& key, int32_t incr, bool mo
 		k.Neg();
 		k.Add(&secp->order);
 		p = secp->ComputePublicKey(&k);
-		std::string chkAddr = secp->GetAddress(mode, p);
+		chkAddr = secp->GetAddress(mode, p); // FIX: No re-declaration
 		if (chkAddr != addr) {
 			printf("\n=================================================================================\n");
 			printf("Warning, wrong private key generated !\n");
@@ -319,7 +319,7 @@ bool SearchModel::checkPrivKeyETH(std::string addr, Int& key, int32_t incr)
 		k.Neg();
 		k.Add(&secp->order);
 		p = secp->ComputePublicKey(&k);
-		std::string chkAddr = secp->GetAddressETH(p);
+		chkAddr = secp->GetAddressETH(p); // FIX: No re-declaration
 		if (chkAddr != addr) {
 			printf("\n=================================================================================\n");
 			printf("Warning, wrong private key generated !\n");
@@ -413,7 +413,7 @@ void SearchModel::checkSingleAddress(bool compressed, Int key, int i, Point p1)
 
 	// Point
 	secp->GetHash160(compressed, p1, h0);
-	if (MatchHash((uint32_t*)h0)) {
+	if (MatchHash(h0)) { // FIX: Removed cast
 		std::string addr = secp->GetAddress(compressed, h0);
 		if (checkPrivKey(addr, key, i, compressed)) {
 			nbFoundKey++;
@@ -429,7 +429,7 @@ void SearchModel::checkSingleAddressETH(Int key, int i, Point p1)
 
 	// Point
 	secp->GetHashETH(p1, h0);
-	if (MatchHash((uint32_t*)h0)) {
+	if (MatchHash(h0)) { // FIX: Removed cast
 		std::string addr = secp->GetAddressETH(h0);
 		if (checkPrivKeyETH(addr, key, i)) {
 			nbFoundKey++;
@@ -460,7 +460,7 @@ void SearchModel::checkSingleXPoint(bool compressed, Int key, int i, Point p1)
 
 	// Point
 	secp->GetXBytes(compressed, p1, h0);
-	if (MatchXPoint((uint32_t*)h0)) {
+	if (MatchXPoint(h0)) { // FIX: Removed cast
 		if (checkPrivKeyX(key, i, compressed)) {
 			nbFoundKey++;
 		}
@@ -516,25 +516,25 @@ void SearchModel::checkSingleAddressesSSE(bool compressed, Int key, int i, Point
 
 	// Point -------------------------------------------------------------------------
 	secp->GetHash160(compressed, p1, p2, p3, p4, h0, h1, h2, h3);
-	if (MatchHash((uint32_t*)h0)) {
+	if (MatchHash(h0)) { // FIX: Removed cast
 		std::string addr = secp->GetAddress(compressed, h0);
 		if (checkPrivKey(addr, key, i + 0, compressed)) {
 			nbFoundKey++;
 		}
 	}
-	if (MatchHash((uint32_t*)h1)) {
+	if (MatchHash(h1)) { // FIX: Removed cast
 		std::string addr = secp->GetAddress(compressed, h1);
 		if (checkPrivKey(addr, key, i + 1, compressed)) {
 			nbFoundKey++;
 		}
 	}
-	if (MatchHash((uint32_t*)h2)) {
+	if (MatchHash(h2)) { // FIX: Removed cast
 		std::string addr = secp->GetAddress(compressed, h2);
 		if (checkPrivKey(addr, key, i + 2, compressed)) {
 			nbFoundKey++;
 		}
 	}
-	if (MatchHash((uint32_t*)h3)) {
+	if (MatchHash(h3)) { // FIX: Removed cast
 		std::string addr = secp->GetAddress(compressed, h3);
 		if (checkPrivKey(addr, key, i + 3, compressed)) {
 			nbFoundKey++;
@@ -881,11 +881,11 @@ void SearchModel::FindKeyGPU(TH_PARAM * ph)
 		break;
 	case (int)SEARCH_MODE_SA:
 		g = new GPUEngine(secp, ph->gridSizeX, ph->gridSizeY, ph->gpuId, maxFound, searchMode, compMode, coinType,
-			hash160Keccak, (rKey != 0));
+			(uint8_t*)hash160Keccak, (rKey != 0));
 		break;
 	case (int)SEARCH_MODE_SX:
 		g = new GPUEngine(secp, ph->gridSizeX, ph->gridSizeY, ph->gpuId, maxFound, searchMode, compMode, coinType,
-			xpoint, (rKey != 0));
+			(uint8_t*)xpoint, (rKey != 0));
 		break;
 	default:
 		printf("Invalid search mode format");
@@ -1221,7 +1221,7 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 		if (isAlive(params)) {
 			memset(timeStr, '\0', 256);
 			printf("\r[%s] [CPU+GPU: %.2f Mk/s] [GPU: %.2f Mk/s] [C: %lf %%] [R: %llu] [T: %s (%d bit)] [F: %d]  ",
-				toTimeStr(t1, timeStr),
+				toTimeStr(t1 - startTime, timeStr),
 				avgKeyRate / 1000000.0,
 				avgGpuKeyRate / 1000000.0,
 				completedPerc,
@@ -1242,13 +1242,13 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 		lastCount = count;
 		lastGPUCount = gpuCount;
 		t0 = t1;
-		if (should_exit || nbFoundKey >= targetCounter || completedPerc > 100.5)
+		if (should_exit || nbFoundKey >= maxFound || completedPerc > 100.5)
 			endOfSearch = true;
 	}
 
 	free(params);
 
-	}
+}
 
 // ----------------------------------------------------------------------------
 
@@ -1303,37 +1303,18 @@ int SearchModel::CheckBloomBinary(const uint8_t * _xx, uint32_t K_LENGTH)
 
 // ----------------------------------------------------------------------------
 
-bool SearchModel::MatchHash(uint32_t * _h)
+bool SearchModel::MatchHash(const uint8_t * _h)
 {
-	if (_h[0] == hash160Keccak[0] &&
-		_h[1] == hash160Keccak[1] &&
-		_h[2] == hash160Keccak[2] &&
-		_h[3] == hash160Keccak[3] &&
-		_h[4] == hash160Keccak[4]) {
-		return true;
-	}
-	else {
-		return false;
-	}
+	// FIX: Use memcmp to avoid strict-aliasing issues and potential alignment faults.
+	return memcmp(_h, hash160Keccak, 20) == 0;
 }
 
 // ----------------------------------------------------------------------------
 
-bool SearchModel::MatchXPoint(uint32_t * _h)
+bool SearchModel::MatchXPoint(const uint8_t * _h)
 {
-	if (_h[0] == xpoint[0] &&
-		_h[1] == xpoint[1] &&
-		_h[2] == xpoint[2] &&
-		_h[3] == xpoint[3] &&
-		_h[4] == xpoint[4] &&
-		_h[5] == xpoint[5] &&
-		_h[6] == xpoint[6] &&
-		_h[7] == xpoint[7]) {
-		return true;
-	}
-	else {
-		return false;
-	}
+	// FIX: Use memcmp to avoid strict-aliasing issues and potential alignment faults.
+	return memcmp(_h, xpoint, 32) == 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -1397,7 +1378,3 @@ char* SearchModel::toTimeStr(int sec, char* timeStr)
 //	//y = y / mpf_class(r);
 //	return 0;// y.get_d();
 //}
-
-
-
-
