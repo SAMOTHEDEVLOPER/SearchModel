@@ -33,104 +33,67 @@ __device__ __constant__ int8_t b58digits_map[] = {
 };
 
 
-// --- START OF FIXED FUNCTION ---
+// --- START OF FINAL CORRECTED FUNCTION ---
 __device__ __noinline__ void _GetAddress(int type, uint32_t *hash, char *b58Add)
 {
-    // A: a 25-byte array to hold the version, hash, and checksum.
     unsigned char A[25];
-    uint32_t s[8]; // State for SHA256
+    unsigned char *addPtr = A;
+    int retPos = 0;
+    unsigned char digits[128]; // Buffer for Base58 conversion
 
-    // --- Checksum Calculation ---
-    // The checksum is the first 4 bytes of SHA256(SHA256(version + hash160)).
+    // --- Checksum Calculation (Corrected Logic) ---
+    uint32_t s[8]; // SHA256 state
+    uint32_t chunk[16]; // 64-byte chunk for transform
 
-    // Step 1: Prepare the first 21-byte message (0x00 + hash160) for SHA256.
-    // SHA256 operates on 512-bit (64-byte) blocks. We need to pad the message.
-    uint32_t first_sha_input[16];
-    
-    // The `hash` input is already in little-endian uint32_t[] format.
-    // We construct the first 21 bytes: 0x00, then the 20 bytes of the hash.
-    first_sha_input[0] = (0x00 << 24) | (hash[0] & 0x00FFFFFF);
-    first_sha_input[1] = (hash[0] >> 24) | ((hash[1] & 0x0000FFFF) << 8);
-    first_sha_input[2] = (hash[1] >> 16) | ((hash[2] & 0x000000FF) << 16);
-    first_sha_input[3] = (hash[2] >> 8);
-    first_sha_input[4] = hash[3];
-    first_sha_input[5] = (hash[4] & 0xFFFFFF00) | 0x00000080; // Last byte of hash + padding
-    
-    // Zero out the rest of the block and set the length.
-    // The message is 21 bytes = 168 bits.
-    for (int i = 6; i < 15; i++) {
-        first_sha_input[i] = 0;
-    }
-    first_sha_input[15] = 168; // Length in bits, already endian-swapped for SHA256
+    // Step 1: First hash of (0x00 || 20-byte hash)
+    // The message is 21 bytes. We must pad it for SHA256.
+    unsigned char first_sha_input[21];
+    first_sha_input[0] = 0x00;
+    memcpy(first_sha_input + 1, (unsigned char*)hash, 20);
 
-    // Calculate the first SHA256 hash.
-    SHA256Initialize(s);
-    SHA256Transform(s, first_sha_input);
+    SHA256_CTX ctx;
+    sha256_init(&ctx);
+    sha256_update(&ctx, first_sha_input, 21);
+    sha256_final(&ctx, (unsigned char*)s); // s now holds the first hash result (32 bytes)
 
-    // Step 2: Prepare the second SHA256 hash. The input is the 32-byte output of the first hash.
-    // The state `s` already holds the hash in the correct format. We just need to pad it.
-    uint32_t second_sha_input[16];
-    for(int i = 0; i < 8; i++) {
-        second_sha_input[i] = s[i];
-    }
-    second_sha_input[8] = 0x80000000; // Padding
-    for (int i = 9; i < 15; i++) {
-        second_sha_input[i] = 0;
-    }
-    second_sha_input[15] = 256; // Length is 32 bytes = 256 bits
+    // Step 2: Second hash of the 32-byte result from the first hash
+    sha256_init(&ctx);
+    sha256_update(&ctx, (unsigned char*)s, 32);
+    sha256_final(&ctx, (unsigned char*)chunk); // chunk now holds the final hash
 
-    // Calculate the second SHA256 hash.
-    SHA256Initialize(s);
-    SHA256Transform(s, second_sha_input);
-
-    // Step 3: The checksum is the first 4 bytes of the second hash.
-    // The first word s[0] contains these bytes. We need to get them in big-endian order.
-    // The SHA256 transform already produces big-endian output in the state words.
-    unsigned char checksum[4];
-    checksum[0] = (s[0] >> 24) & 0xFF;
-    checksum[1] = (s[0] >> 16) & 0xFF;
-    checksum[2] = (s[0] >> 8) & 0xFF;
-    checksum[3] = s[0] & 0xFF;
-
-    // Assemble the final 25-byte payload for Base58 encoding.
+    // Step 3: Assemble the 25-byte address payload
     A[0] = 0x00;
     memcpy(A + 1, (unsigned char*)hash, 20);
-    memcpy(A + 21, checksum, 4);
+    memcpy(A + 21, (unsigned char*)chunk, 4); // Checksum is the first 4 bytes of the final hash
 
-    // --- Base58 Encoding ---
-    
-    unsigned char *addPtr = A;
-    int dataSize = 25;
-    int retPos = 0;
-    unsigned char digits[128]; // This buffer is large enough for a 25-byte number.
+    // --- Base58 Encoding (Original, Stable Logic) ---
 
-    // Count and encode leading zeroes as '1's.
-    for (int i = 0; i < dataSize && addPtr[i] == 0; i++) {
+    // Skip leading zeroes
+    while (addPtr < (A + 25) && *addPtr == 0) {
         b58Add[retPos++] = '1';
+        addPtr++;
     }
+    int length = (int)(A + 25 - addPtr);
 
-    int length = 0; // Length of the b58 number
-    
-    // Convert base256 to base58.
-    for (int i = retPos; i < dataSize; i++) {
-        unsigned int carry = addPtr[i];
-        for (int j = 0; j < length; j++) {
-            carry += (unsigned int)(digits[j]) * 256;
+    int digitslen = 1;
+    digits[0] = 0;
+    for (int i = 0; i < length; i++) {
+        uint32_t carry = addPtr[i];
+        for (int j = 0; j < digitslen; j++) {
+            carry += (uint32_t)(digits[j]) << 8;
             digits[j] = (unsigned char)(carry % 58);
             carry /= 58;
         }
         while (carry > 0) {
-            digits[length++] = (unsigned char)(carry % 58);
+            digits[digitslen++] = (unsigned char)(carry % 58);
             carry /= 58;
         }
     }
-    
-    // The number of leading '1's has already been written.
-    // Now write the rest of the b58 digits in reverse order.
-    for(int i = 0; i < length; i++) {
-        b58Add[retPos++] = pszBase58[digits[length - 1 - i]];
-    }
 
-    b58Add[retPos] = 0; // Null-terminate the string.
+    // reverse
+    for (int i = 0; i < digitslen; i++)
+        b58Add[retPos++] = (pszBase58[digits[digitslen - 1 - i]]);
+
+    b58Add[retPos] = 0;
 }
-// --- END OF FIXED FUNCTION ---
+// --- END OF FINAL CORRECTED FUNCTION ---
