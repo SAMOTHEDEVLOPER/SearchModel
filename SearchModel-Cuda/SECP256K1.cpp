@@ -89,7 +89,6 @@ void CheckAddress(Secp256K1* T, std::string address, std::string privKeyStr)
 		return;
 	}
 
-    // FIX: Corrected typo from c_tostr() to c_str()
 	printf("Failed ! \n %s\n", calcAddress.c_str());
 
 }
@@ -149,7 +148,7 @@ void Secp256K1::Check()
 
 	// 18aPiLmTow7Xgu96msrDYvSSWweCvB9oBA
 	pub.x.SetBase16(/*03*/"3bf3d80f868fa33c6353012cb427e98b080452f19b5c1149ea2acfe4b7599739");
-	pub.y = GetY(pub.x, true); // Note: 0x03 means odd Y, not even
+	pub.y = GetY(pub.x, true);
 	printf("Check Calc PubKey (odd) %s:", GetAddress(true, pub).c_str());
 	PrintResult(EC(pub));
 
@@ -760,8 +759,9 @@ Point Secp256K1::AddDirect(Point& p1, Point& p2)
 
 	dy.ModSub(&p2.y, &p1.y);
 	dx.ModSub(&p2.x, &p1.x);
-    if(dx.isZero()) {
-        if(dy.isZero()) {
+    // FIX: Corrected case from isZero to IsZero
+    if(dx.IsZero()) {
+        if(dy.IsZero()) {
             return DoubleDirect(p1);
         } else {
             r.Clear();
@@ -808,8 +808,9 @@ Point Secp256K1::Add2(Point& p1, Point& p2)
 	u.ModSub(&u1, &p1.y);
 	v.ModSub(&v1, &p1.x);
 
-    if (v.isZero()) {
-        if (u.isZero()) {
+    // FIX: Corrected case from isZero to IsZero
+    if (v.IsZero()) {
+        if (u.IsZero()) {
             return Double(p1);
         } else {
             r.Clear(); // Point at infinity
@@ -866,8 +867,9 @@ Point Secp256K1::Add(Point& p1, Point& p2)
 	u.ModSub(&u1, &u2);
 	v.ModSub(&v1, &v2);
 
-	if (v.isZero()) {
-	  if (u.isZero())
+    // FIX: Corrected case from isZero to IsZero
+	if (v.IsZero()) {
+	  if (u.IsZero())
 		return Double(p1);
 	  else {
         r.Clear(); // Point at infinity
@@ -906,7 +908,8 @@ Point Secp256K1::DoubleDirect(Point& p)
 	Point r;
 	r.z.SetInt32(1);
 
-	if(p.y.isZero()) {
+    // FIX: Corrected case from isZero to IsZero
+	if(p.y.IsZero()) {
 		r.Clear();
 		return r;
 	}
@@ -933,7 +936,8 @@ Point Secp256K1::DoubleDirect(Point& p)
 Point Secp256K1::Double(Point& p)
 {
 	Point r;
-	if (p.y.isZero()){
+    // FIX: Corrected case from isZero to IsZero
+	if (p.y.IsZero()){
 		r.Clear();
 		return r;
 	}
@@ -981,7 +985,6 @@ Point Secp256K1::Double(Point& p)
 	r.y.ModMulK1(&w);
 	r.y.ModSub(&_8y2s2);
 
-    // FIX: Corrected logic to calculate Z' = 8 * S^3
 	r.z.ModMulK1(&s2, &s); // Z' = S^3
 	r.z.ModDouble();
 	r.z.ModDouble();
@@ -1015,15 +1018,16 @@ bool Secp256K1::EC(Point& p)
 	Int _s;
 	Int _p;
 
-    // FIX: Corrected case from IsZero to isZero
 	if(p.isZero()) return true;
 
 	_s.ModSquareK1(&p.x);
-	_p.ModMulK1(&_s, &x);
+    // FIX: Corrected undeclared variable 'x' to 'p.x'
+	_p.ModMulK1(&_s, &p.x);
 	_p.ModAdd(7);
 	_s.ModSquareK1(&p.y);
 	_s.ModSub(&_p);
 
-	return _s.isZero();
+    // FIX: Corrected case from isZero to IsZero
+	return _s.IsZero();
 
 }
