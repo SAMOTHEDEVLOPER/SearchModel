@@ -1,10 +1,6 @@
 # KeyHunt-Cuda 
 _Hunt for Bitcoin private keys._
 
-This is a modified version of VanitySearch by [JeanLucPons](https://github.com/JeanLucPons/VanitySearch/).
-
-Renamed from VanitySearch to KeyHunt (inspired from [keyhunt](https://github.com/albertobsd/keyhunt) by albertobsd).
-
 A lot of gratitude to all the developers whose codes has been used here.
 
 # Features
