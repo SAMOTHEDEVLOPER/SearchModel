@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <iostream>
 #include <cassert>
+#include <inttypes.h> // For PRIu64
 #ifndef WIN64
 #include <pthread.h>
 #endif
@@ -87,7 +88,7 @@ SearchModel::SearchModel(const std::string& inputFile, int compMode, int searchM
 			bloom->add(buf, K_LENGTH);
 			memcpy(DATA + (i * K_LENGTH), buf, K_LENGTH);
 			if ((percent != 0) && i % percent == 0) {
-				printf("\rLoading      : %llu %%", (i / percent));
+				printf("\rLoading      : %" PRIu64 " %%", (i / percent));
 				fflush(stdout);
 			}
 		}
@@ -152,15 +153,11 @@ SearchModel::SearchModel(const std::vector<unsigned char>& hashORxpoint, int com
 
 	if (this->searchMode == (int)SEARCH_MODE_SA) {
 		assert(hashORxpoint.size() == 20);
-		for (size_t i = 0; i < hashORxpoint.size(); i++) {
-			((uint8_t*)hash160Keccak)[i] = hashORxpoint.at(i);
-		}
+		memcpy(this->hash160Keccak, hashORxpoint.data(), 20);
 	}
 	else if (this->searchMode == (int)SEARCH_MODE_SX) {
 		assert(hashORxpoint.size() == 32);
-		for (size_t i = 0; i < hashORxpoint.size(); i++) {
-			((uint8_t*)xpoint)[i] = hashORxpoint.at(i);
-		}
+		memcpy(this->xpoint, hashORxpoint.data(), 32);
 	}
 	printf("\n");
 
@@ -189,7 +186,7 @@ void SearchModel::InitGenratorTable()
 	printf("Start Time   : %s", ctimeBuff);
 
 	if (rKey > 0) {
-		printf("Base Key     : Randomly changes on every %llu Mkeys\n", rKey);
+		printf("Base Key     : Randomly changes on every %" PRIu64 " Mkeys\n", rKey);
 	}
 	printf("Global start : %s (%d bit)\n", this->rangeStart.GetBase16().c_str(), this->rangeStart.GetBitLength());
 	printf("Global end   : %s (%d bit)\n", this->rangeEnd.GetBase16().c_str(), this->rangeEnd.GetBitLength());
@@ -287,7 +284,7 @@ bool SearchModel::checkPrivKey(std::string addr, Int& key, int32_t incr, bool mo
 		k.Neg();
 		k.Add(&secp->order);
 		p = secp->ComputePublicKey(&k);
-		chkAddr = secp->GetAddress(mode, p); // FIX: No re-declaration
+		chkAddr = secp->GetAddress(mode, p);
 		if (chkAddr != addr) {
 			printf("\n=================================================================================\n");
 			printf("Warning, wrong private key generated !\n");
@@ -319,7 +316,7 @@ bool SearchModel::checkPrivKeyETH(std::string addr, Int& key, int32_t incr)
 		k.Neg();
 		k.Add(&secp->order);
 		p = secp->ComputePublicKey(&k);
-		chkAddr = secp->GetAddressETH(p); // FIX: No re-declaration
+		chkAddr = secp->GetAddressETH(p);
 		if (chkAddr != addr) {
 			printf("\n=================================================================================\n");
 			printf("Warning, wrong private key generated !\n");
@@ -413,7 +410,7 @@ void SearchModel::checkSingleAddress(bool compressed, Int key, int i, Point p1)
 
 	// Point
 	secp->GetHash160(compressed, p1, h0);
-	if (MatchHash(h0)) { // FIX: Removed cast
+	if (MatchHash(h0)) {
 		std::string addr = secp->GetAddress(compressed, h0);
 		if (checkPrivKey(addr, key, i, compressed)) {
 			nbFoundKey++;
@@ -429,7 +426,7 @@ void SearchModel::checkSingleAddressETH(Int key, int i, Point p1)
 
 	// Point
 	secp->GetHashETH(p1, h0);
-	if (MatchHash(h0)) { // FIX: Removed cast
+	if (MatchHash(h0)) {
 		std::string addr = secp->GetAddressETH(h0);
 		if (checkPrivKeyETH(addr, key, i)) {
 			nbFoundKey++;
@@ -460,7 +457,7 @@ void SearchModel::checkSingleXPoint(bool compressed, Int key, int i, Point p1)
 
 	// Point
 	secp->GetXBytes(compressed, p1, h0);
-	if (MatchXPoint(h0)) { // FIX: Removed cast
+	if (MatchXPoint(h0)) {
 		if (checkPrivKeyX(key, i, compressed)) {
 			nbFoundKey++;
 		}
@@ -516,25 +513,25 @@ void SearchModel::checkSingleAddressesSSE(bool compressed, Int key, int i, Point
 
 	// Point -------------------------------------------------------------------------
 	secp->GetHash160(compressed, p1, p2, p3, p4, h0, h1, h2, h3);
-	if (MatchHash(h0)) { // FIX: Removed cast
+	if (MatchHash(h0)) {
 		std::string addr = secp->GetAddress(compressed, h0);
 		if (checkPrivKey(addr, key, i + 0, compressed)) {
 			nbFoundKey++;
 		}
 	}
-	if (MatchHash(h1)) { // FIX: Removed cast
+	if (MatchHash(h1)) {
 		std::string addr = secp->GetAddress(compressed, h1);
 		if (checkPrivKey(addr, key, i + 1, compressed)) {
 			nbFoundKey++;
 		}
 	}
-	if (MatchHash(h2)) { // FIX: Removed cast
+	if (MatchHash(h2)) {
 		std::string addr = secp->GetAddress(compressed, h2);
 		if (checkPrivKey(addr, key, i + 2, compressed)) {
 			nbFoundKey++;
 		}
 	}
-	if (MatchHash(h3)) { // FIX: Removed cast
+	if (MatchHash(h3)) {
 		std::string addr = secp->GetAddress(compressed, h3);
 		if (checkPrivKey(addr, key, i + 3, compressed)) {
 			nbFoundKey++;
@@ -942,10 +939,7 @@ void SearchModel::FindKeyGPU(TH_PARAM * ph)
 			ok = g->LaunchSEARCH_MODE_MX(found, false);
 			for (int i = 0; i < (int)found.size() && !endOfSearch; i++) {
 				ITEM it = found[i];
-				//Point pk;
-				//memcpy((uint32_t*)pk.x.bits, (uint32_t*)it.hash, 8);
-				//string addr = secp->GetAddress(it.mode, pk);
-				if (checkPrivKeyX(/*addr,*/ keys[it.thId], it.incr, it.mode)) {
+				if (checkPrivKeyX(keys[it.thId], it.incr, it.mode)) {
 					nbFoundKey++;
 				}
 			}
@@ -972,10 +966,7 @@ void SearchModel::FindKeyGPU(TH_PARAM * ph)
 			ok = g->LaunchSEARCH_MODE_SX(found, false);
 			for (int i = 0; i < (int)found.size() && !endOfSearch; i++) {
 				ITEM it = found[i];
-				//Point pk;
-				//memcpy((uint32_t*)pk.x.bits, (uint32_t*)it.hash, 8);
-				//string addr = secp->GetAddress(it.mode, pk);
-				if (checkPrivKeyX(/*addr,*/ keys[it.thId], it.incr, it.mode)) {
+				if (checkPrivKeyX(keys[it.thId], it.incr, it.mode)) {
 					nbFoundKey++;
 				}
 			}
@@ -1194,15 +1185,15 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 		ICount.SetInt64(count);
 		int completedBits = ICount.GetBitLength();
 		if (rKey <= 0) {
-			completedPerc = CalcPercantage(ICount, rangeStart, rangeDiff2);
+			// completedPerc = CalcPercantage(ICount, rangeStart, rangeDiff2);
 			//ICount.Mult(&p100);
 			//ICount.Div(&this->rangeDiff2);
 			//completedPerc = std::stoi(ICount.GetBase10());
 		}
 
 		t1 = Timer::get_tick();
-		keyRate = (double)(count - lastCount) / (t1 - t0);
-		gpuKeyRate = (double)(gpuCount - lastGPUCount) / (t1 - t0);
+		keyRate = (t1 - t0) > 0.001 ? (double)(count - lastCount) / (t1 - t0) : 0.0;
+		gpuKeyRate = (t1 - t0) > 0.001 ? (double)(gpuCount - lastGPUCount) / (t1 - t0) : 0.0;
 		lastkeyRate[filterPos % FILTER_SIZE] = keyRate;
 		lastGpukeyRate[filterPos % FILTER_SIZE] = gpuKeyRate;
 		filterPos++;
@@ -1215,12 +1206,14 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 			avgKeyRate += lastkeyRate[nbSample];
 			avgGpuKeyRate += lastGpukeyRate[nbSample];
 		}
-		avgKeyRate /= (double)(nbSample);
-		avgGpuKeyRate /= (double)(nbSample);
+		if (nbSample > 0) {
+			avgKeyRate /= (double)(nbSample);
+			avgGpuKeyRate /= (double)(nbSample);
+		}
 
 		if (isAlive(params)) {
 			memset(timeStr, '\0', 256);
-			printf("\r[%s] [CPU+GPU: %.2f Mk/s] [GPU: %.2f Mk/s] [C: %lf %%] [R: %llu] [T: %s (%d bit)] [F: %d]  ",
+			printf("\r[%s] [CPU+GPU: %.2f Mk/s] [GPU: %.2f Mk/s] [C: %lf %%] [R: %" PRIu64 "] [T: %s (%d bit)] [F: %d]  ",
 				toTimeStr(t1 - startTime, timeStr),
 				avgKeyRate / 1000000.0,
 				avgGpuKeyRate / 1000000.0,
@@ -1242,7 +1235,7 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 		lastCount = count;
 		lastGPUCount = gpuCount;
 		t0 = t1;
-		if (should_exit || nbFoundKey >= maxFound || completedPerc > 100.5)
+		if (should_exit || (maxFound > 0 && nbFoundKey >= maxFound) || completedPerc > 100.5)
 			endOfSearch = true;
 	}
 
@@ -1305,16 +1298,14 @@ int SearchModel::CheckBloomBinary(const uint8_t * _xx, uint32_t K_LENGTH)
 
 bool SearchModel::MatchHash(const uint8_t * _h)
 {
-	// FIX: Use memcmp to avoid strict-aliasing issues and potential alignment faults.
-	return memcmp(_h, hash160Keccak, 20) == 0;
+	return memcmp(_h, this->hash160Keccak, 20) == 0;
 }
 
 // ----------------------------------------------------------------------------
 
 bool SearchModel::MatchXPoint(const uint8_t * _h)
 {
-	// FIX: Use memcmp to avoid strict-aliasing issues and potential alignment faults.
-	return memcmp(_h, xpoint, 32) == 0;
+	return memcmp(_h, this->xpoint, 32) == 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -1323,7 +1314,7 @@ std::string SearchModel::formatThousands(uint64_t x)
 {
 	char buf[32] = "";
 
-	sprintf(buf, "%llu", x);
+	sprintf(buf, "%" PRIu64, x);
 
 	std::string s(buf);
 
