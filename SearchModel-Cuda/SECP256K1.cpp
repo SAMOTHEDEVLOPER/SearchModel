@@ -272,7 +272,7 @@ Int Secp256K1::DecodePrivateKey(char* key, bool* compressed)
 (buff)[5] = ((p).x.bits[2] >> 8) | ((p).x.bits[3] <<24); \
 (buff)[6] = ((p).x.bits[1] >> 8) | ((p).x.bits[2] <<24); \
 (buff)[7] = ((p).x.bits[0] >> 8) | ((p).x.bits[1] <<24); \
-(buff)[8] = 0x00800000 | ((uint32_t)(((unsigned char*)&p.x.bits[0])[3]) << 24); \
+(buff)[8] = 0x00800000 | ((p).x.bits[0] <<24); \
 (buff)[9] = 0; \
 (buff)[10] = 0; \
 (buff)[11] = 0; \
@@ -290,7 +290,7 @@ Int Secp256K1::DecodePrivateKey(char* key, bool* compressed)
 (buff)[5] = ((p).x.bits[2] >> 8) | ((p).x.bits[3] <<24); \
 (buff)[6] = ((p).x.bits[1] >> 8) | ((p).x.bits[2] <<24); \
 (buff)[7] = ((p).x.bits[0] >> 8) | ((p).x.bits[1] <<24); \
-(buff)[8] = ((p).y.bits[7] >> 8) | ((uint32_t)(((unsigned char*)&p.x.bits[0])[3]) << 24); \
+(buff)[8] = ((p).y.bits[7] >> 8) | ((p).x.bits[0] <<24); \
 (buff)[9] = ((p).y.bits[6] >> 8) | ((p).y.bits[7] <<24); \
 (buff)[10] = ((p).y.bits[5] >> 8) | ((p).y.bits[6] <<24); \
 (buff)[11] = ((p).y.bits[4] >> 8) | ((p).y.bits[5] <<24); \
@@ -298,7 +298,7 @@ Int Secp256K1::DecodePrivateKey(char* key, bool* compressed)
 (buff)[13] = ((p).y.bits[2] >> 8) | ((p).y.bits[3] <<24); \
 (buff)[14] = ((p).y.bits[1] >> 8) | ((p).y.bits[2] <<24); \
 (buff)[15] = ((p).y.bits[0] >> 8) | ((p).y.bits[1] <<24); \
-(buff)[16] = 0x00800000 | ((uint32_t)(((unsigned char*)&p.y.bits[0])[3]) << 24); \
+(buff)[16] = 0x00800000 | ((p).y.bits[0] <<24); \
 (buff)[17] = 0; \
 (buff)[18] = 0; \
 (buff)[19] = 0; \
@@ -540,6 +540,12 @@ void Secp256K1::GetPubKeyBytes(bool compressed, Point& pubKey, unsigned char* pu
 		// Compressed public key
 		publicKeyBytes[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
 		pubKey.x.Get32Bytes(publicKeyBytes + 1);
+
+
+		//for (int i = 0; i < 33; i++) {
+		//	printf("%02x", ((uint8_t*)publicKeyBytes)[i]);
+		//}
+		//printf("\n");
 	}
 }
 
@@ -548,39 +554,52 @@ void Secp256K1::GetXBytes(bool compressed, Point& pubKey, unsigned char* publicK
 	if (!compressed) {
 
 		// Full public key
+		//publicKeyBytes[0] = 0x4;
 		pubKey.x.Get32Bytes(publicKeyBytes);
 		pubKey.y.Get32Bytes(publicKeyBytes + 32);
 	}
 	else {
 
 		// Compressed public key
+		//publicKeyBytes[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
 		pubKey.x.Get32Bytes(publicKeyBytes);
+
+
+		//for (int i = 0; i < 33; i++) {
+		//	printf("%02x", ((uint8_t*)publicKeyBytes)[i]);
+		//}
+		//printf("\n");
 	}
 }
 
-// THIS IS THE CORRECTED FUNCTION FOR SINGLE-KEY VERIFICATION
 void Secp256K1::GetHash160(bool compressed, Point& pubKey, unsigned char* hash)
 {
-    unsigned char shapk[32]; // SHA-256 output is 32 bytes
 
-    if (!compressed) {
-        // Use the exact same serialization as the SSE/GPU path for uncompressed keys
-        uint32_t b[32];
-        KEYBUFFUNCOMP(b, pubKey);
-        // Hash the serialized buffer (which represents a 65-byte payload)
-        sha256_65((unsigned char*)b, shapk);
-    } else {
-        // Use the exact same serialization as the SSE/GPU path for compressed keys
-        uint32_t b[16];
-        KEYBUFFCOMP(b, pubKey);
-        // Hash the serialized buffer (which represents a 33-byte payload)
-        sha256_33((unsigned char*)b, shapk);
-    }
+	unsigned char shapk[64];
 
-    // This part is consistent across all paths
-    ripemd160_32(shapk, hash);
+	unsigned char publicKeyBytes[128];
+
+	if (!compressed) {
+
+		// Full public key
+		publicKeyBytes[0] = 0x4;
+		pubKey.x.Get32Bytes(publicKeyBytes + 1);
+		pubKey.y.Get32Bytes(publicKeyBytes + 33);
+		sha256_65(publicKeyBytes, shapk);
+
+	}
+	else {
+
+		// Compressed public key
+		publicKeyBytes[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
+		pubKey.x.Get32Bytes(publicKeyBytes + 1);
+		sha256_33(publicKeyBytes, shapk);
+
+	}
+
+	ripemd160_32(shapk, hash);
+
 }
-
 
 void Secp256K1::GetHashETH(Point& pubKey, unsigned char* hash)
 {
@@ -612,6 +631,21 @@ std::string Secp256K1::GetPrivAddress(bool compressed, Int& privKey)
 	}
 
 }
+
+//std::string Secp256K1::GetPrivAddressETH(Int& privKey)
+//{
+//
+//	unsigned char address[38];
+//
+//	address[0] = 0x80; // Mainnet
+//	privKey.Get32Bytes(address + 1);
+//
+//	// Compute checksum
+//	sha256_checksum(address, 33, address + 33);
+//	return EncodeBase58(address, address + 37);
+//
+//
+//}
 
 #define CHECKSUM(buff,A) \
 (buff)[0] = (uint32_t)A[0] << 24 | (uint32_t)A[1] << 16 | (uint32_t)A[2] << 8 | (uint32_t)A[3];\
@@ -844,6 +878,26 @@ Point Secp256K1::Add(Point& p1, Point& p2)
 	Int vs3y1;
 	Point r;
 
+	/*
+	U1 = Y2 * Z1
+	U2 = Y1 * Z2
+	V1 = X2 * Z1
+	V2 = X1 * Z2
+	if (V1 == V2)
+	  if (U1 != U2)
+		return POINT_AT_INFINITY
+	  else
+		return POINT_DOUBLE(X1, Y1, Z1)
+	U = U1 - U2
+	V = V1 - V2
+	W = Z1 * Z2
+	A = U ^ 2 * W - V ^ 3 - 2 * V ^ 2 * V2
+	X3 = V * A
+	Y3 = U * (V ^ 2 * V2 - A) - V ^ 3 * U2
+	Z3 = V ^ 3 * W
+	return (X3, Y3, Z3)
+	*/
+
 	u1.ModMulK1(&p2.y, &p1.z);
 	u2.ModMulK1(&p1.y, &p2.z);
 	v1.ModMulK1(&p2.x, &p1.z);
@@ -905,6 +959,20 @@ Point Secp256K1::DoubleDirect(Point& p)
 
 Point Secp256K1::Double(Point& p)
 {
+
+
+	/*
+	if (Y == 0)
+	  return POINT_AT_INFINITY
+	  W = a * Z ^ 2 + 3 * X ^ 2
+	  S = Y * Z
+	  B = X * Y*S
+	  H = W ^ 2 - 8 * B
+	  X' = 2*H*S
+	  Y' = W*(4*B - H) - 8*Y^2*S^2
+	  Z' = 8*S^3
+	  return (X', Y', Z')
+	*/
 
 	Int z2;
 	Int x2;
