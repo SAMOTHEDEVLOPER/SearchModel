@@ -3,7 +3,7 @@
 #include "Base58.h"
 #include "hash/sha256.h"
 #include "hash/keccak160.h"
-#include "IntGroup.h"
+include "IntGroup.h"
 #include "Timer.h"
 #include "hash/ripemd160.h"
 #include <cstring>
@@ -1174,22 +1174,39 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 	uint64_t rKeyCount = 0;
 	while (isAlive(params)) {
 
-		int delay = 2000;
+        //-FIX- START: Changed reporting interval from 2 seconds to 15 seconds
+		int delay = 15000;
 		while (isAlive(params) && delay > 0) {
 			Timer::SleepMillis(500);
 			delay -= 500;
 		}
+        //-FIX- END
 
 		gpuCount = getGPUCount();
 		uint64_t count = getCPUCount() + gpuCount;
-		ICount.SetInt64(count);
-		int completedBits = ICount.GetBitLength();
-		if (rKey <= 0) {
-			// completedPerc = CalcPercantage(ICount, rangeStart, rangeDiff2);
-			//ICount.Mult(&p100);
-			//ICount.Div(&this->rangeDiff2);
-			//completedPerc = std::stoi(ICount.GetBase10());
+		
+		if (rKey <= 0 && !rangeDiff2.IsZero()) {
+            //-FIX- START: Uncommented and corrected percentage calculation
+            Int currentCount;
+            currentCount.SetInt64(count);
+
+            currentCount.Mult(&p100);
+            currentCount.Div(&this->rangeDiff2);
+            try {
+                // Use stod for floating point precision, then cast to double
+                completedPerc = std::stod(currentCount.GetBase10());
+            } catch (const std::exception& e) {
+                // In case of conversion error, default to 0
+                completedPerc = 0;
+            }
+            //-FIX- END
 		}
+        int completedBits = 0;
+        if(count > 0) {
+            Int tempCount;
+            tempCount.SetInt64(count);
+		    completedBits = tempCount.GetBitLength();
+        }
 
 		t1 = Timer::get_tick();
 		keyRate = (t1 - t0) > 0.001 ? (double)(count - lastCount) / (t1 - t0) : 0.0;
@@ -1213,7 +1230,7 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 
 		if (isAlive(params)) {
 			memset(timeStr, '\0', 256);
-			printf("\r[%s] [CPU+GPU: %.2f Mk/s] [GPU: %.2f Mk/s] [C: %lf %%] [R: %" PRIu64 "] [T: %s (%d bit)] [F: %d]  ",
+			printf("\r[%s] [CPU+GPU: %.2f Mk/s] [GPU: %.2f Mk/s] [C: %.6f %%] [R: %" PRIu64 "] [T: %s (%d bit)] [F: %d]  ",
 				toTimeStr(t1 - startTime, timeStr),
 				avgKeyRate / 1000000.0,
 				avgGpuKeyRate / 1000000.0,
@@ -1235,7 +1252,7 @@ void SearchModel::Search(int nbThread, std::vector<int> gpuId, std::vector<int> 
 		lastCount = count;
 		lastGPUCount = gpuCount;
 		t0 = t1;
-		if (should_exit || (maxFound > 0 && nbFoundKey >= maxFound) || completedPerc > 100.5)
+		if (should_exit || (maxFound > 0 && nbFoundKey >= maxFound) || completedPerc >= 100.0)
 			endOfSearch = true;
 	}
 
@@ -1352,20 +1369,3 @@ char* SearchModel::toTimeStr(int sec, char* timeStr)
 	sprintf(timeStr, "%0*d:%0*d:%0*d", 2, h, 2, m, 2, s);
 	return (char*)timeStr;
 }
-
-// ----------------------------------------------------------------------------
-
-//#include <gmp.h>
-//#include <gmpxx.h>
-// ((input - min) * 100) / (max - min)
-//double SearchModel::GetPercantage(uint64_t v)
-//{
-//	//Int val(v);
-//	//mpz_class x(val.GetBase16().c_str(), 16);
-//	//mpz_class r(rangeStart.GetBase16().c_str(), 16);
-//	//x = x - mpz_class(rangeEnd.GetBase16().c_str(), 16);
-//	//x = x * 100;
-//	//mpf_class y(x);
-//	//y = y / mpf_class(r);
-//	return 0;// y.get_d();
-//}
